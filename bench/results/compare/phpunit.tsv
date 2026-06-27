@@ -1,0 +1,8 @@
+corpus	variant	clones	dup_lines	pct	gapped	time
+phpunit	original (phar)	156	9221	4.60%	-	0.99s
+phpunit	rk	156	9221	4.64%	0	1.14s
+phpunit	rk+fuzzy	587	50018	25.15%	0	1.22s
+phpunit	rk+anchored	555	45095	22.67%	0	1.29s
+phpunit	st (ed=3)	-	-	-	-	skipped
+phpunit	tb (sim=0.7)	202	11721	5.89%	0	1.83s
+phpunit	tb+fuzzy (sim=0.7)	192	12277	6.17%	0	0.72s

@@ -1,0 +1,8 @@
+corpus	variant	clones	dup_lines	pct	gapped	time
+symfony-string	original (phar)	1	35	0.33%	-	0.08s
+symfony-string	rk	1	35	0.33%	0	0.08s
+symfony-string	rk+fuzzy	27	3987	37.07%	0	0.08s
+symfony-string	rk+anchored	24	3718	34.57%	0	0.08s
+symfony-string	st (ed=3)	-	-	-	-	skipped
+symfony-string	tb (sim=0.7)	3	263	2.45%	0	0.03s
+symfony-string	tb+fuzzy (sim=0.7)	5	143	1.33%	0	0.03s

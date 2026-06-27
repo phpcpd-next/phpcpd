@@ -1,0 +1,60 @@
+{
+  "version": "1",
+  "note": "Pinned SHA values are populated by bench/fetch.sh on first run. Re-run fetch.sh to update.",
+  "corpora": {
+    "wordpress": {
+      "repo": "https://github.com/WordPress/WordPress",
+      "sha": "1e394dee4588695313d67b4deadb898abf6f2d24",
+      "bucket": "untyped-control",
+      "description": "Canonical untyped PHP — procedural, hook-driven, minimal type declarations. The null end of the type-density x-axis.",
+      "strip": [
+        "vendor",
+        "node_modules",
+        "wp-content/uploads"
+      ]
+    },
+    "symfony-string": {
+      "repo": "https://github.com/symfony/string",
+      "sha": "afd5944f4005862d961efb85c8bbd5c523c4e3c9",
+      "bucket": "injection-library",
+      "description": "PHP 8.2+, strict_types throughout — densest clean typed code. Injection substrate for E2."
+    },
+    "symfony-console": {
+      "repo": "https://github.com/symfony/console",
+      "sha": "b711a8ab808b6c074c6b8caef70d0fd8d6b6d07d",
+      "bucket": "injection-library",
+      "description": "PHP 8.2+, strict_types throughout."
+    },
+    "phpunit": {
+      "repo": "https://github.com/sebastianbergmann/phpunit",
+      "sha": "c88a159d6e8c38566517c52ade1f86c30a383da0",
+      "bucket": "injection-reflexive",
+      "description": "Evaluate the clone tool on its own author's ecosystem. PHPStan-max-clean. Symbolically apt for a phpcpd lineage paper.",
+      "strip": [
+        "vendor"
+      ]
+    },
+    "php-parser": {
+      "repo": "https://github.com/nikic/PHP-Parser",
+      "sha": "50f0d9c9d0e3cff1163c959c50aaaaa4a7115f08",
+      "bucket": "injection-dogfood",
+      "description": "Typed and well-understood. Dep used by the type-density metric itself.",
+      "strip": [
+        "vendor"
+      ]
+    },
+    "firefly-iii": {
+      "repo": "https://github.com/firefly-iii/firefly-iii",
+      "sha": "4b80df1f44bce2f242b754145e912f2a0ca3a0d7",
+      "bucket": "ecological",
+      "description": "Laravel app running Larastan MAX — confirmed high type-density. Accumulates duplicated controllers, form requests, validation blocks. The typed-and-cloney quadrant.",
+      "strip": [
+        "vendor",
+        "node_modules",
+        "storage",
+        "bootstrap/cache",
+        "database/migrations"
+      ]
+    }
+  }
+}

@@ -1,0 +1,8 @@
+corpus	variant	clones	dup_lines	pct	gapped	time
+wordpress	original (phar)	177	9950	1.51%	-	3.24s
+wordpress	rk	177	9950	1.51%	0	3.91s
+wordpress	rk+fuzzy	847	52597	7.97%	0	4.16s
+wordpress	rk+anchored	821	51121	7.75%	0	4.39s
+wordpress	st (ed=3)	-	-	-	-	skipped
+wordpress	tb (sim=0.7)	263	14361	2.18%	0	31.89s
+wordpress	tb+fuzzy (sim=0.7)	962	75729	11.47%	0	12.4s

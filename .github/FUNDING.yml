@@ -1,0 +1,20 @@
+# Funding configuration for phpcpd-next.
+#
+# Fill in the handles below and uncomment the lines you want to use. Lines are
+# left commented so the repository does not render broken "Sponsor" buttons
+# before the accounts exist.
+#
+# Docs: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+
+# github: [your-github-username]            # GitHub Sponsors
+# open_collective: phpcpd-next            # Open Collective slug
+# ko_fi: yourhandle                         # Ko-fi
+# tidelift: packagist/phpcpd-next/phpcpd         # Tidelift (packagist/<vendor>/<package>)
+# custom:                                   # Any other URLs (PayPal, donate page)
+#   - "https://example.org/donate"
+
+# Funding targets to pursue (notes, not rendered by GitHub):
+#   - PHP Foundation — PHP ecosystem work
+#   - NLnet / NGI Zero — open-source public-good grants
+#   - Sovereign Tech Fund — foundational open infrastructure
+#   - GitHub Sponsors / Tidelift — adoption-driven, once dependents grow

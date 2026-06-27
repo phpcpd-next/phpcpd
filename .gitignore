@@ -1,0 +1,48 @@
+# Composer
+/vendor/
+composer.phar
+
+# Benchmark corpus — downloaded third-party code, 1.5 GB, not part of this repo.
+# Run bench/fetch.sh to rebuild locally.
+/bench/corpus/
+
+# Benchmark vendor — contains phpcpd.phar (comparison binary).
+# Run: curl -L https://github.com/sebastianbergmann/phpcpd/releases/download/6.0.3/phpcpd.phar \
+#       -o bench/vendor/phpcpd.phar
+/bench/vendor/
+
+# Built phar artifact (generate with bin/build-phar.sh)
+/build/
+
+# Tool caches
+/.php-cs-fixer.cache
+/.phpunit.cache/
+/.phpcpd-cache/
+
+# LaTeX build artifacts (the paper PDF is built via bin/build-paper.sh).
+# Keep paper.tex and paper.pdf; ignore everything LaTeX regenerates.
+/paper/*.aux
+/paper/*.log
+/paper/*.out
+/paper/*.toc
+/paper/*.lof
+/paper/*.lot
+/paper/*.bbl
+/paper/*.blg
+/paper/*.fls
+/paper/*.fdb_latexmk
+/paper/*.synctex.gz
+/paper/*.nav
+/paper/*.snm
+/paper/*.vrb
+/paper/*.auxlock
+/paper/*.dpth
+/paper/*.md5
+
+# IDE / OS noise
+/.idea/
+/.vscode/
+*.DS_Store
+
+# Claude Code local settings
+/.claude/

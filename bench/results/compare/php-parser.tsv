@@ -1,0 +1,8 @@
+corpus	variant	clones	dup_lines	pct	gapped	time
+php-parser	original (phar)	15	1350	4.15%	-	0.32s
+php-parser	rk	15	1350	4.15%	0	0.37s
+php-parser	rk+fuzzy	54	4921	15.13%	0	0.39s
+php-parser	rk+anchored	47	4837	14.87%	0	0.41s
+php-parser	st (ed=3)	-	-	-	-	skipped
+php-parser	tb (sim=0.7)	6	1889	5.81%	0	0.15s
+php-parser	tb+fuzzy (sim=0.7)	6	1879	5.78%	0	0.14s

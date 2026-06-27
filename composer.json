@@ -1,0 +1,62 @@
+{
+    "name": "phpcpd-next/phpcpd",
+    "description": "phpcpd-next — Copy/Paste (clone) detector for PHP 8.5+ with Type-1/2/3 detection. The maintained successor to the archived sebastianbergmann/phpcpd.",
+    "homepage": "https://github.com/phpcpd-next/phpcpd",
+    "license": "BSD-3-Clause",
+    "authors": [
+        {
+            "name": "Sebastian Bergmann",
+            "email": "sebastian@phpunit.de",
+            "role": "Original author"
+        },
+        {
+            "name": "Luciano Federico Pereira",
+            "role": "Fork maintainer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/phpcpd-next/phpcpd/issues",
+        "source": "https://github.com/phpcpd-next/phpcpd"
+    },
+    "config": {
+        "platform": {
+            "php": "8.5.0"
+        },
+        "optimize-autoloader": true,
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "require": {
+        "php": ">=8.5",
+        "ext-dom": "*",
+        "ext-mbstring": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "LucianoPereira\\PhpcpdNext\\": ["src/", "src/CLI/", "src/Exceptions/"]
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "LucianoPereira\\PhpcpdNext\\Tests\\": "tests/"
+        }
+    },
+    "bin": [
+        "phpcpd"
+    ],
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "phpstan/phpstan": "^2.2",
+        "phpunit/phpunit": "^11.0 || ^12.0 || ^13.0",
+        "rector/rector": "^2.0"
+    },
+    "scripts": {
+        "lint":     "php-cs-fixer fix --dry-run --diff",
+        "lint:fix": "php-cs-fixer fix",
+        "analyse":  "phpstan analyse --memory-limit=1G",
+        "test":     "phpunit",
+        "check":    ["@lint", "@analyse", "@test"],
+        "release":  "bash bin/release.sh"
+    }
+}

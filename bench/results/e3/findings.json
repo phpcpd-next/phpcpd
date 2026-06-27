@@ -1,0 +1,93 @@
+{
+    "gapped_clones": 58,
+    "findings": [
+        {
+            "file_a": "app\/Api\/V1\/Controllers\/Models\/Attachment\/ShowController.php",
+            "line_a": 47,
+            "last_commit_a": "63c49f740fbc",
+            "file_b": "app\/Api\/V1\/Controllers\/Models\/Attachment\/DestroyController.php",
+            "line_b": 40,
+            "last_commit_b": "47b02b30ea30",
+            "lines": 34,
+            "staleness_days": 9,
+            "note": "Inconsistent (gapped) clone; copies last touched 9 days apart"
+        },
+        {
+            "file_a": "app\/Api\/V1\/Controllers\/Models\/Bill\/StoreController.php",
+            "line_a": 45,
+            "last_commit_a": "84ea19d14c79",
+            "file_b": "app\/Api\/V1\/Controllers\/Models\/Recurrence\/StoreController.php",
+            "line_b": 42,
+            "last_commit_b": "47b02b30ea30",
+            "lines": 34,
+            "staleness_days": 5,
+            "note": "Inconsistent (gapped) clone; copies last touched 5 days apart"
+        },
+        {
+            "file_a": "app\/Api\/V1\/Controllers\/Models\/Budget\/ListController.php",
+            "line_a": 112,
+            "last_commit_a": "47b02b30ea30",
+            "file_b": "app\/Api\/V1\/Controllers\/Models\/BudgetLimit\/ShowController.php",
+            "line_b": 130,
+            "last_commit_b": "7c3fb7a95ae2",
+            "lines": 24,
+            "staleness_days": 5,
+            "note": "Inconsistent (gapped) clone; copies last touched 5 days apart"
+        },
+        {
+            "file_a": "app\/Api\/V1\/Controllers\/Models\/BudgetLimit\/ShowController.php",
+            "line_a": 99,
+            "last_commit_a": "7c3fb7a95ae2",
+            "file_b": "app\/Api\/V1\/Controllers\/Models\/TransactionCurrency\/ListController.php",
+            "line_b": 227,
+            "last_commit_b": "12f19c6c34f2",
+            "lines": 24,
+            "staleness_days": 3,
+            "note": "Inconsistent (gapped) clone; copies last touched 3 days apart"
+        },
+        {
+            "file_a": "app\/Api\/V1\/Controllers\/Models\/TransactionCurrency\/ListController.php",
+            "line_a": 343,
+            "last_commit_a": "12f19c6c34f2",
+            "file_b": "app\/Api\/V1\/Controllers\/Models\/Tag\/ListController.php",
+            "line_b": 101,
+            "last_commit_b": "47b02b30ea30",
+            "lines": 35,
+            "staleness_days": 2,
+            "note": "Inconsistent (gapped) clone; copies last touched 2 days apart"
+        },
+        {
+            "file_a": "app\/Api\/V1\/Controllers\/Models\/ObjectGroup\/ListController.php",
+            "line_a": 76,
+            "last_commit_a": "47b02b30ea30",
+            "file_b": "app\/Api\/V1\/Controllers\/Models\/TransactionCurrency\/ListController.php",
+            "line_b": 179,
+            "last_commit_b": "12f19c6c34f2",
+            "lines": 32,
+            "staleness_days": 2,
+            "note": "Inconsistent (gapped) clone; copies last touched 2 days apart"
+        },
+        {
+            "file_a": "app\/Api\/V1\/Controllers\/Models\/TransactionCurrency\/ListController.php",
+            "line_a": 320,
+            "last_commit_a": "12f19c6c34f2",
+            "file_b": "app\/Api\/V1\/Controllers\/Models\/Tag\/ShowController.php",
+            "line_b": 76,
+            "last_commit_b": "47b02b30ea30",
+            "lines": 23,
+            "staleness_days": 2,
+            "note": "Inconsistent (gapped) clone; copies last touched 2 days apart"
+        },
+        {
+            "file_a": "app\/Api\/V1\/Controllers\/Models\/PiggyBank\/ListController.php",
+            "line_a": 88,
+            "last_commit_a": "47b02b30ea30",
+            "file_b": "app\/Api\/V1\/Controllers\/Models\/TransactionCurrency\/ListController.php",
+            "line_b": 118,
+            "last_commit_b": "12f19c6c34f2",
+            "lines": 19,
+            "staleness_days": 2,
+            "note": "Inconsistent (gapped) clone; copies last touched 2 days apart"
+        }
+    ]
+}

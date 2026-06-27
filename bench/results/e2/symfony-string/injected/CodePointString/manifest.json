@@ -1,0 +1,11 @@
+{
+    "pairs": [
+        {
+            "base": "CodePointString_base.php",
+            "variant": "CodePointString_ssdiff.php",
+            "operator": "ssdiff",
+            "is_clone": false,
+            "note": "--fuzzy reports this as a clone (false positive); --type-anchored correctly rejects it"
+        }
+    ]
+}

@@ -1,0 +1,8 @@
+corpus	variant	clones	dup_lines	pct	gapped	time
+firefly-iii	original (phar)	95	2914	1.54%	-	1.11s
+firefly-iii	rk	95	2914	1.54%	0	1.33s
+firefly-iii	rk+fuzzy	645	29497	15.58%	0	1.42s
+firefly-iii	rk+anchored	628	28912	15.27%	0	1.52s
+firefly-iii	st (ed=3)	-	-	-	-	skipped
+firefly-iii	tb (sim=0.7)	320	11529	6.09%	0	6.31s
+firefly-iii	tb+fuzzy (sim=0.7)	733	31954	16.88%	0	2.47s
