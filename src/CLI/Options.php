@@ -49,6 +49,14 @@ final class Options
                 group: 'Options for selecting files',
             ),
             new OptionDefinition(
+                name: 'preset',
+                takesValue: true,
+                allowedValues: Presets::names(),
+                valuePlaceholder: '<name>',
+                description: 'Apply a framework preset (e.g. laravel): sets sensible paths, suffixes, and excludes',
+                group: 'Options for selecting files',
+            ),
+            new OptionDefinition(
                 name: 'rk',
                 description: 'Rabin-Karp only (exact/Type-1 clones; faster, no reorder detection). Default runs both Rabin-Karp and TokenBag.',
                 group: 'Options for analysing files',
@@ -78,7 +86,7 @@ final class Options
                 takesValue: true,
                 allowedValues: ['rabin-karp', 'suffixtree', 'tokenbag'],
                 valuePlaceholder: '<name>',
-                description: "Single algorithm override (rabin-karp | suffixtree | tokenbag)",
+                description: 'Single algorithm override (rabin-karp | suffixtree | tokenbag)',
                 group: 'Options for analysing files',
                 advanced: true,
             ),
@@ -148,12 +156,12 @@ final class Options
                 name: 'cache-dir',
                 takesValue: true,
                 valuePlaceholder: '<path>',
-                description: "Read/write cache from <path> (implies --cache; overrides default directory)",
+                description: 'Read/write cache from <path> (implies --cache; overrides default directory)',
                 group: 'Options for CI integration',
             ),
             new OptionDefinition(
                 name: 'incremental',
-                description: "Per-file incremental index: re-tokenize only changed files (rabin-karp only; uses the cache directory)",
+                description: 'Per-file incremental index: re-tokenize only changed files (rabin-karp only; uses the cache directory)',
                 group: 'Options for CI integration',
             ),
             new OptionDefinition(

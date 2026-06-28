@@ -10,6 +10,46 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.1.0] - 2026-06-28
+
+### Added — integrations
+
+- **Headless mode** (`LucianoPereira\PhpcpdNext\Phpcpd::detect()`): a one-call, in-process API that
+  finds files, runs the same engine the CLI uses, and returns the raw `CodeCloneMap` — no banner, no
+  argv parsing, no file I/O. The CLI and all embedders now share a single detection core (`Engine`),
+  so they can never disagree about what a clone is.
+- **Framework presets** (`--preset=<name>`, and `preset:` in the headless API): a named bundle of
+  paths, suffixes, and excludes — pure configuration, no runtime dependency. Ships with a **`laravel`**
+  preset (scans `app routes database config`; skips `vendor`, `storage`, `bootstrap/cache`, `public`,
+  Blade views, and migration boilerplate). Explicit flags seed-then-override the preset. New presets
+  are a single `Preset` entry in `src/Presets.php`.
+- **PHPUnit integration** (`integration/phpunit/`): an `AssertNoDuplication` trait and a
+  `DuplicationConstraint` that turn copy/paste detection into a regression test, with offending
+  locations (and `[inconsistent]` flags) printed on failure. Shipped in the **production**
+  autoloader under `LucianoPereira\PhpcpdNext\PHPUnit\`, so it works for any project that requires
+  phpcpd-next (even as `--dev`). phpcpd-next dogfoods it — `SelfDryTest` now keeps `src/` clean
+  through this exact trait.
+- **Laravel via Artisan**: documented (no extra package) by wiring the headless API into a command.
+
+### Packaging & distribution
+
+- **Published to Packagist** as `phpcpd-next/phpcpd`: `composer require --dev phpcpd-next/phpcpd`.
+- `composer.json`: added `type`, `keywords`, and a `suggest` for `phpunit/phpunit` (the optional
+  PHPUnit integration); moved the `PHPUnit\` namespace into the production autoloader.
+- Added `.gitattributes` with `export-ignore` rules so the dist tarball ships only runtime code
+  (`src/`, `integration/`, the binary), not tests, benchmarks, or tool configs.
+
+### Tooling
+
+- Committed a `.php-cs-fixer.dist.php` codifying the existing code style, so `composer lint` /
+  `composer check` run non-interactively.
+
+### Documentation
+
+- Reworked the README to document the **full** feature surface accurately: the real default
+  (Rabin-Karp + TokenBag) and `--rk`, all four output formats, the complete option reference split
+  into stable vs. advanced/research flags, presets, headless mode, and the PHPUnit integration.
+
 ## [1.0.0] - 2026-06-27
 
 ### Performance

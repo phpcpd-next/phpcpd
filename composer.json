@@ -1,6 +1,16 @@
 {
     "name": "phpcpd-next/phpcpd",
     "description": "phpcpd-next — Copy/Paste (clone) detector for PHP 8.5+ with Type-1/2/3 detection. The maintained successor to the archived sebastianbergmann/phpcpd.",
+    "type": "library",
+    "keywords": [
+        "phpcpd",
+        "copy-paste-detector",
+        "clone-detection",
+        "duplication",
+        "code-quality",
+        "static-analysis",
+        "ci"
+    ],
     "homepage": "https://github.com/phpcpd-next/phpcpd",
     "license": "BSD-3-Clause",
     "authors": [
@@ -34,7 +44,8 @@
     },
     "autoload": {
         "psr-4": {
-            "LucianoPereira\\PhpcpdNext\\": ["src/", "src/CLI/", "src/Exceptions/"]
+            "LucianoPereira\\PhpcpdNext\\": ["src/", "src/CLI/", "src/Exceptions/"],
+            "LucianoPereira\\PhpcpdNext\\PHPUnit\\": "integration/phpunit/src/"
         }
     },
     "autoload-dev": {
@@ -50,6 +61,9 @@
         "phpstan/phpstan": "^2.2",
         "phpunit/phpunit": "^11.0 || ^12.0 || ^13.0",
         "rector/rector": "^2.0"
+    },
+    "suggest": {
+        "phpunit/phpunit": "To use the PHPUnit integration (AssertNoDuplication trait / DuplicationConstraint) for duplication-as-a-test"
     },
     "scripts": {
         "lint":     "php-cs-fixer fix --dry-run --diff",

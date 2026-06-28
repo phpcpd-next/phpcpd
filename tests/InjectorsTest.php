@@ -16,11 +16,9 @@ namespace LucianoPereira\PhpcpdNext\Tests;
 require_once __DIR__ . '/_guard.php';
 require_once __DIR__ . '/../bench/injectors.php';
 
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
-
 use function bcb_has_bool_type;
 use function bcb_has_int_type;
+
 use function bcb_op_ssdiff;
 use function bcb_op_ssdiff_bool;
 use function bcb_op_type1;
@@ -28,6 +26,9 @@ use function bcb_op_type2;
 use function bcb_op_type3;
 use function bcb_operators;
 use function substr_count;
+
+use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\TestCase;
 
 final class InjectorsTest extends TestCase
 {
@@ -63,13 +64,13 @@ final class InjectorsTest extends TestCase
     {
         self::assertTrue(bcb_has_int_type(self::SRC));
         self::assertTrue(bcb_has_bool_type(self::SRC));
-        self::assertFalse(bcb_has_bool_type("<?php function h(int \$a): int { return \$a; }"));
+        self::assertFalse(bcb_has_bool_type('<?php function h(int $a): int { return $a; }'));
     }
 
     #[Test]
     public function type2_renames_variables_to_fresh_consistent_names(): void
     {
-        $out = bcb_op_type2("<?php function f(\$alpha, \$beta) { return \$alpha + \$beta + \$alpha; }");
+        $out = bcb_op_type2('<?php function f($alpha, $beta) { return $alpha + $beta + $alpha; }');
 
         self::assertStringNotContainsString('$alpha', $out);
         self::assertStringNotContainsString('$beta', $out);

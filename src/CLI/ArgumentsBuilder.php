@@ -31,14 +31,29 @@ final class ArgumentsBuilder
             }
         }
 
-        $exclude          = [];
-        $suffixes         = ['.php'];
+        // A preset seeds the defaults below. Explicit flags then override
+        // (thresholds) or append to (suffix/exclude) those seeds, so a preset
+        // is a starting point, never a ceiling.
+        $preset = null;
+
+        foreach ($parsed['options'] as [$name, $value]) {
+            if ($name === 'preset' && $value !== null && $value !== '') {
+                $preset = Presets::get($value);
+
+                if ($preset === null) {
+                    throw new ArgumentsBuilderException('Unknown preset: ' . $value);
+                }
+            }
+        }
+
+        $exclude          = $preset->exclude ?? [];
+        $suffixes         = $preset->suffixes ?? ['.php'];
         $pmdCpdXmlLogfile = null;
         $jsonLogfile      = null;
         $sarifLogfile     = null;
         $cacheDir         = null;
-        $linesThreshold   = 5;
-        $tokensThreshold  = 70;
+        $linesThreshold   = $preset->minLines ?? 5;
+        $tokensThreshold  = $preset->minTokens ?? 70;
         $editDistance     = 5;
         $headEquality     = 10;
         $fuzzy            = false;
@@ -121,6 +136,12 @@ final class ArgumentsBuilder
                     $incremental = true;
                     break;
             }
+        }
+
+        // No directory on the command line falls back to the preset's paths
+        // (e.g. `phpcpd --preset=laravel` scans app/routes/database/config).
+        if (empty($directories) && $preset !== null) {
+            $directories = $preset->paths;
         }
 
         if (empty($directories) && !$help && !$version) {

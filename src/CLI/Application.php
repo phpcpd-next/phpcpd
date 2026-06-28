@@ -20,12 +20,7 @@ use const PHP_EOL;
 
 use LucianoPereira\PhpcpdNext\Cache\CloneCache;
 use LucianoPereira\PhpcpdNext\Cache\IncrementalIndex;
-use LucianoPereira\PhpcpdNext\Detector\Detector;
-use LucianoPereira\PhpcpdNext\Detector\Strategy\AbstractStrategy;
-use LucianoPereira\PhpcpdNext\Detector\Strategy\DefaultStrategy;
 use LucianoPereira\PhpcpdNext\Detector\Strategy\StrategyConfiguration;
-use LucianoPereira\PhpcpdNext\Detector\Strategy\SuffixTreeStrategy;
-use LucianoPereira\PhpcpdNext\Detector\Strategy\TokenBagStrategy;
 use LucianoPereira\PhpcpdNext\Log\Json;
 use LucianoPereira\PhpcpdNext\Log\Logger;
 use LucianoPereira\PhpcpdNext\Log\PMD;
@@ -102,10 +97,8 @@ final class Application
                 print '(--incremental ignored in combined mode)' . PHP_EOL;
             }
 
-            // Default: run Rabin-Karp (exact clones) + TokenBag (reordered clones) and merge.
-            $clones = (new Detector(new DefaultStrategy($config)))->copyPasteDetection($files);
-            $tbMap  = (new Detector(new TokenBagStrategy($config)))->copyPasteDetection($files);
-            $clones->mergeFrom($tbMap);
+            // Default: Rabin-Karp (exact clones) + TokenBag (reordered clones), merged.
+            $clones = (new Engine($config))->detect($files);
         } else {
             if ($arguments->incremental()) {
                 print '(--incremental ignored: only the rabin-karp algorithm has an incremental index)' . PHP_EOL;
@@ -119,14 +112,13 @@ final class Application
 
             if ($clones === null) {
                 try {
-                    $strategy = $this->pickStrategy($arguments->algorithm(), $config);
+                    $clones = (new Engine($config, $arguments->algorithm()))->detect($files);
                 } catch (InvalidStrategyException $e) {
                     print $e->getMessage() . PHP_EOL;
 
                     return 1;
                 }
 
-                $clones = (new Detector($strategy))->copyPasteDetection($files);
                 $cache?->put($files, $clones);
             } else {
                 print '(cache hit)' . PHP_EOL;
@@ -164,19 +156,6 @@ final class Application
     {
         return $arguments->incremental()
             && $arguments->algorithm() === 'rabin-karp';
-    }
-
-    /**
-     * @throws InvalidStrategyException
-     */
-    private function pickStrategy(?string $algorithm, StrategyConfiguration $config): AbstractStrategy
-    {
-        return match ($algorithm) {
-            null, 'rabin-karp' => new DefaultStrategy($config),
-            'suffixtree' => new SuffixTreeStrategy($config),
-            'tokenbag'   => new TokenBagStrategy($config),
-            default      => throw new InvalidStrategyException('Unsupported algorithm: ' . $algorithm),
-        };
     }
 
     /** @return list<Logger> */

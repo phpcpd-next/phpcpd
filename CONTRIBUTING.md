@@ -60,6 +60,39 @@ proposed CLI/behaviour (for features). For detector-algorithm proposals, the
 research roadmap lives in [`ROADMAP.md`](ROADMAP.md) — check whether your idea is
 already a planned item (or explicitly out of scope) before opening.
 
+## Releasing & publishing to Packagist
+
+The package is published on Packagist as
+[`phpcpd-next/phpcpd`](https://packagist.org/packages/phpcpd-next/phpcpd).
+
+**One-time setup (maintainer):**
+
+1. Sign in to [packagist.org](https://packagist.org) → **Submit** → paste the
+   GitHub URL `https://github.com/phpcpd-next/phpcpd`.
+2. Enable auto-updates: install the **Packagist** GitHub app on the repo (or add
+   the Packagist webhook under *Settings → Webhooks*). New tags then publish
+   automatically.
+
+**Cutting a release:**
+
+```bash
+composer check                 # lint + analyse + test must all be green
+composer validate              # composer.json must be valid
+composer release 1.1.0         # bumps the VERSION constant (see bin/release.sh)
+```
+
+Then follow the steps the script prints: move the `[Unreleased]` CHANGELOG entries
+under the new version heading, commit, and push a **SemVer tag** (`git tag -s v1.1.0`).
+Packagist picks up the tag and publishes it. Verify with:
+
+```bash
+composer show phpcpd-next/phpcpd --all
+```
+
+The dist tarball is kept lean by `.gitattributes` (`export-ignore`): `tests/`,
+`bench/`, `paper/`, and tool configs are not shipped, but `src/`, `integration/`,
+and the `phpcpd` binary are.
+
 ## License
 
 By contributing, you agree that your contributions are licensed under the
