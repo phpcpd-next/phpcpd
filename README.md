@@ -4,13 +4,6 @@
     
 # phpcpd-next
 
-<p align="center">
-  <a href="https://packagist.org/packages/phpcpd-next/phpcpd"><img src="https://img.shields.io/packagist/v/phpcpd-next/phpcpd.svg" alt="Latest version on Packagist"></a>
-  <a href="https://packagist.org/packages/phpcpd-next/phpcpd"><img src="https://img.shields.io/packagist/php-v/phpcpd-next/phpcpd.svg" alt="PHP version"></a>
-  <a href="https://packagist.org/packages/phpcpd-next/phpcpd"><img src="https://img.shields.io/packagist/dt/phpcpd-next/phpcpd.svg" alt="Total downloads"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/packagist/l/phpcpd-next/phpcpd.svg" alt="License"></a>
-</p>
-
 **Token-based copy/paste detection for PHP 8.5+ — a maintained successor to phpcpd, with reorder-tolerant (Type-3) detection.**
 
 A maintained, dependency-free successor to the archived
