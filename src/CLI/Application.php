@@ -26,10 +26,17 @@ use LucianoPereira\PhpcpdNext\Log\Logger;
 use LucianoPereira\PhpcpdNext\Log\PMD;
 use LucianoPereira\PhpcpdNext\Log\Sarif;
 use LucianoPereira\PhpcpdNext\Log\Text;
+use LucianoPereira\PhpcpdNext\Orphan\OrphanDetector;
+use LucianoPereira\PhpcpdNext\Orphan\OrphanTextReport;
 use LucianoPereira\PhpcpdNext\Util\FileFinder;
 use LucianoPereira\PhpcpdNext\Util\ResourceUsageFormatter;
 use LucianoPereira\PhpcpdNext\Util\Timer;
 
+/**
+ * The CLI entry point, invoked from the `phpcpd` binary.
+ *
+ * @api
+ */
 final class Application
 {
     private const string VERSION         = Version::NUMBER;
@@ -75,6 +82,10 @@ final class Application
         }
 
         $config = new StrategyConfiguration($arguments);
+
+        if ($arguments->orphans()) {
+            return $this->detectOrphans($files, $config);
+        }
 
         $timer = new Timer();
         $timer->start();
@@ -131,9 +142,37 @@ final class Application
             $logger->process($clones);
         }
 
+        // Orphans ride along by default as an advisory: reported (reusing the
+        // clone map just computed to flag superseded copies), but only clones
+        // gate the exit code. Run `--orphans` for the full, build-failing report.
+        (new OrphanTextReport())->printAdvisory((new OrphanDetector())->detect($files, $clones));
+
         print (new ResourceUsageFormatter())->format($timer->seconds(), count($files)) . PHP_EOL;
 
         return count($clones) > 0 ? 1 : 0;
+    }
+
+    /**
+     * Orphan-only mode (`--orphans`): report unreferenced symbols instead of
+     * clones, and gate on them — a definite orphan yields a non-zero exit so CI
+     * can fail on it, exactly like a clone. A Rabin–Karp pass over the same files
+     * feeds the "superseded copy of ..." annotation.
+     *
+     * @param list<string> $files
+     */
+    private function detectOrphans(array $files, StrategyConfiguration $config): int
+    {
+        $timer = new Timer();
+        $timer->start();
+
+        $clones = (new Engine($config, 'rabin-karp'))->detect($files);
+        $result = (new OrphanDetector())->detect($files, $clones);
+
+        (new OrphanTextReport())->printResult($result);
+
+        print (new ResourceUsageFormatter())->format($timer->seconds(), count($files)) . PHP_EOL;
+
+        return $result->hasDefiniteOrphans() ? 1 : 0;
     }
 
     private function printVersion(): void

@@ -59,6 +59,7 @@ final class ArgumentsBuilder
         $fuzzy            = false;
         $typeAnchored     = false;
         $incremental      = false;
+        $orphans          = false;
         $verbose          = false;
         $help             = false;
         $version          = false;
@@ -135,6 +136,9 @@ final class ArgumentsBuilder
                 case 'incremental':
                     $incremental = true;
                     break;
+                case 'orphans':
+                    $orphans = true;
+                    break;
             }
         }
 
@@ -168,6 +172,7 @@ final class ArgumentsBuilder
             similarity: $similarity,
             cacheDir: $cacheDir,
             incremental: $incremental,
+            orphans: $orphans,
         );
     }
 }

@@ -10,6 +10,45 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.2.0] - 2026-07-19
+
+### Added — orphan detection (dead code)
+
+- **Orphaned symbols** — top-level classes, interfaces, traits, enums, and global functions that
+  nothing in the scanned set references. Same token engine, same zero-dependency, no-parser design as
+  the clone side.
+- **Two run modes**: orphans **ride along in the default scan as an advisory** (reported, but only
+  clones set the exit code — safe for framework-heavy code where dynamic dispatch causes false
+  positives); **`--orphans`** runs orphans-only and *gates* CI (a definite orphan → non-zero exit,
+  exactly like a clone).
+- **Explains *why* something is dead**, not just *that* it is:
+  - **Whole-file "unwired"** — flags when every symbol declared in a file is itself an orphan (a
+    stronger delete signal than one dead class among live ones). This is phpunused's "unreferenced
+    file", done at symbol granularity.
+  - **"Superseded copy of ..."** — reuses the clone engine: an orphan whose body duplicates a *live*
+    symbol is annotated as the stale copy some refactor replaced but left behind. This is the
+    orphan × clone synergy unique to phpcpd-next.
+- **Two confidence tiers** (harvested from Psalm's `UnusedClass` / `PossiblyUnusedClass` split): a
+  **definite** orphan is referenced nowhere and drives the exit code; a **possible** orphan is either
+  a contract (interface / abstract class, which an out-of-tree package may implement) or a name that
+  only appears in a string literal (a candidate for `new $class` / DI-container lookup) — reported for
+  review, but does not fail the build.
+- **Entry-point awareness** (harvested from shipmonk/dead-code-detector's usage providers): classes
+  wired via framework attributes (`#[Route]`, `#[AsCommand]`, `#[AsEventListener]`, `#[Entity]`,
+  `#[Attribute]`, …) and `*Test` classes are recognised as reachable and never flagged.
+- **Suppression annotations**: `@api`, `@psalm-api`, `@phpstan-api`, `@phpcpd-keep`, and
+  `@phpcpd-ignore-orphan` in a symbol's docblock mark it intentionally public / kept.
+- **Better than a grep-based finder** (the phpunused niche, done right): because detection is
+  token-based, a name mentioned in a comment or the declaration itself no longer masks a real orphan,
+  and a name in a string is scored as a *weak* dynamic signal rather than a hard reference. Reference
+  detection is deliberately generous — over-counting hides a real orphan (safe), under-counting would
+  tell someone to delete live code (never).
+- **Headless API** `LucianoPereira\PhpcpdNext\Orphans::detect()`, mirroring `Phpcpd::detect()`, plus a
+  new `LucianoPereira\PhpcpdNext\Orphan\` subsystem (`SymbolCollector`, `OrphanDetector`, `Symbol`,
+  `Orphan`, `OrphanResult`, `OrphanTextReport`). Covered by `tests/OrphanDetectorTest.php` (10 tests).
+  Dogfooding the tool against `src/` immediately surfaced a genuinely dead exception class
+  (`MissingResultException`).
+
 ## [1.1.0] - 2026-06-28
 
 ### Added — integrations
@@ -177,5 +216,7 @@ First release of **phpcpd-next**. Picks up where Sebastian Bergmann's archived
 - **`.editorconfig`** — consistent whitespace before any tool runs.
 - **Composer scripts** — `lint`, `lint:fix`, `analyse`, `test`, `check`.
 
-[1.0.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.0.0
-[0.1.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v0.1.0
+[1.2.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.2
+[1.1.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.1
+[1.0.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.0
+[0.1.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v0.1

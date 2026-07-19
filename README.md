@@ -19,6 +19,8 @@ so it can see exact copies, *reordered* clones, and *gapped* near-misses.
 
 - **Three token-based engines** — Rabin-Karp (exact) and TokenBag (reordered) run by default; the
   suffix tree (gapped Type-3) is an opt-in research engine.
+- **Orphan detection (`--orphans`)** — find unreferenced classes, interfaces, traits, enums, and
+  functions, with two confidence tiers and framework entry-point awareness.
 - **Actionable console output** — every clone comes with a context-aware refactoring hint, plus a
   run summary (duplicated-line percentage, average and largest clone size).
 - **Inconsistent-clone reporting** — with `--algorithm=suffixtree`, diverged near-misses are flagged
@@ -165,6 +167,98 @@ phpcpd --algorithm=suffixtree --edit-distance=8 src/    # gapped clones, wider b
 phpcpd --fuzzy src/                                      # renamed-identifier clones
 ```
 
+## Orphan detection (dead code)
+
+Clones are duplicated code; **orphans are unreachable code** — a class, interface, trait, enum, or
+global function that nothing references. Same token engine, no parser, no AST, no runtime dependency.
+
+Two modes:
+
+- **Default run** — orphans ride along with the clone scan as an **advisory**: they're reported, but
+  only clones set the exit code. (Safe for framework-heavy projects where dynamic dispatch causes
+  false positives — see the Laravel note below.)
+- **`--orphans`** — orphans **only**, and they **gate CI**: a *definite* orphan makes the run exit
+  non-zero, exactly like a clone.
+
+```bash
+phpcpd --orphans src/
+```
+
+```text
+Found 1 orphaned symbol(s):
+
+  - Class App\Legacy\UnusedReport
+    src/Legacy/UnusedReport.php:14
+    → never referenced
+    ⤷ whole file is unwired — no symbol declared here is referenced
+
+  - Class App\Billing\InvoiceLegacy
+    src/Billing/Ledger.php:120
+    → never referenced
+    ⤷ looks like a superseded copy of App\Billing\Invoice (src/Billing/Ledger.php:14)
+
+Found 2 possible orphan(s) — review before removing:
+
+  - Interface App\Contract\PaymentGateway
+    src/Contract/PaymentGateway.php:9
+    → never referenced (interface — may be implemented outside the scanned set)
+  ...
+```
+
+Each finding is **explained**, not just listed:
+
+- **`whole file is unwired`** — *every* symbol in that file is an orphan, so the whole file is dead
+  (phpunused's "unreferenced file", at symbol granularity).
+- **`looks like a superseded copy of X`** — the orphan's body duplicates a **live** symbol, so it's
+  almost certainly the stale copy a refactor replaced and forgot to delete. This reuses the clone
+  engine — the orphan × clone synergy that a pure dead-code linter can't offer.
+
+**Two confidence tiers**, so the tool never nags you into deleting live code:
+
+| Tier | Meaning | Exit code |
+|------|---------|-----------|
+| **Definite** | Referenced nowhere; safe to delete. | Non-zero (CI gate) |
+| **Possible** | A contract (interface / `abstract`) an out-of-tree package may implement, or a name that appears only in a **string literal** (a candidate for `new $class` / a DI-container id). | Zero (report only) |
+
+**What it won't false-alarm on** — framework entry points are reachable even when unreferenced:
+
+- Classes wired via attributes: `#[Route]`, `#[AsCommand]`, `#[AsEventListener]`, `#[AsMessageHandler]`,
+  `#[Entity]`, `#[Attribute]`, and more.
+- `*Test` classes (discovered by the test runner, not by a reference).
+- Anything marked `@api`, `@psalm-api`, `@phpstan-api`, `@phpcpd-keep`, or `@phpcpd-ignore-orphan`.
+
+**Scope, honestly.** Orphan detection stops at the type/function level — the "unreferenced file" case.
+Method- and property-level dead code needs whole-program type inference (*which* class does
+`$this->handle()` resolve to under inheritance and a DI container?); that is PHPStan + Psalm's job, and
+this token-based tool deliberately does not guess at it. What it does do — decide whether a *named*
+type or function is ever mentioned at all — it does safely: reference detection is generous by design,
+so it prefers to stay silent over flagging something that is used. Point it at a whole project
+(including `bin/`, entry scripts, and config) so legitimate roots are seen as referenced.
+
+**Laravel and other convention-driven frameworks.** Treat orphan output as *review candidates, not a
+delete list*. Laravel reaches many classes with no by-name reference, and they fall into three buckets:
+`[Controller::class, 'method']` routes, `$listen`/`$subscribe` arrays and `app(Foo::class)` all use
+`::class`, which counts as a **real reference**; string-based references (string route actions, class
+names in `config/`, container bindings) are demoted to **possible** — *as long as you scan those files
+too* (`routes/`, `config/`); but **convention/auto-discovery** (policies, Livewire/Filament components,
+commands loaded via `load()`, model observers) leaves classes with no textual mention at all, and those
+**will false-positive**. This is exactly why orphans are advisory in the default run — scan the whole
+app, lean on the *possible* tier, and reach for `--orphans` (the gating mode) on code you control.
+
+Embed it the same way as clone detection:
+
+```php
+use LucianoPereira\PhpcpdNext\Orphans;
+
+$result = Orphans::detect('src');
+
+if ($result->hasDefiniteOrphans()) {
+    foreach ($result->definite() as $orphan) {
+        echo $orphan->symbol->fqn, ' — ', $orphan->reason, PHP_EOL;
+    }
+}
+```
+
 ## Output formats
 
 The console report is human-readable and always printed; add `--verbose` to print the duplicated
@@ -208,6 +302,9 @@ Options for selecting files:
   --suffix <suffix>       Include files ending in <suffix> (default: .php; repeatable)
   --exclude <path>        Exclude paths (substring or glob, e.g. '*.blade.php'; repeatable)
   --preset <name>         Apply a framework preset (e.g. laravel): paths, suffixes, excludes
+
+Orphan detection (dead code):
+  --orphans               Detect orphaned (unreferenced) symbols instead of clones
 
 Options for analysing files:
   --rk                    Rabin-Karp only (exact/Type-1; faster, no reorder detection)

@@ -40,6 +40,7 @@ final readonly class Arguments
         private ?string $cacheDir = null,
         private bool $typeAnchored = false,
         private bool $incremental = false,
+        private bool $orphans = false,
     ) {}
 
     /** @return list<non-empty-string> */
@@ -121,5 +122,9 @@ final readonly class Arguments
     public function incremental(): bool
     {
         return $this->incremental;
+    }
+    public function orphans(): bool
+    {
+        return $this->orphans;
     }
 }

@@ -57,6 +57,11 @@ final class Options
                 group: 'Options for selecting files',
             ),
             new OptionDefinition(
+                name: 'orphans',
+                description: 'Detect orphaned symbols (unreferenced classes, interfaces, traits, enums, functions) instead of clones',
+                group: 'Orphan detection (dead code)',
+            ),
+            new OptionDefinition(
                 name: 'rk',
                 description: 'Rabin-Karp only (exact/Type-1 clones; faster, no reorder detection). Default runs both Rabin-Karp and TokenBag.',
                 group: 'Options for analysing files',

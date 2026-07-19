@@ -27,6 +27,8 @@ use LucianoPereira\PhpcpdNext\Util\FileFinder;
  *   $clones = Phpcpd::detect('app', preset: 'laravel', minTokens: 60);
  *
  *   if ($clones->count() > 0) { ... }
+ *
+ * @api
  */
 final class Phpcpd
 {
