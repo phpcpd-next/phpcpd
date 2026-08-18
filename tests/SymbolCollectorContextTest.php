@@ -1,0 +1,122 @@
+<?php
+
+declare(strict_types=1);
+/*
+ * This file is part of PhpcpdNext.
+ *
+ * (c) 2026 Luciano Federico Pereira
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+namespace LucianoPereira\PhpcpdNext\Tests;
+
+require_once __DIR__ . '/_guard.php';
+
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\TestCase;
+use LucianoPereira\PhpcpdNext\Orphan\CollectedSymbols;
+use LucianoPereira\PhpcpdNext\Orphan\Symbol;
+use LucianoPereira\PhpcpdNext\Orphan\SymbolCollector;
+use LucianoPereira\PhpcpdNext\Util\FileFinder;
+
+/**
+ * The collector tracks PHP block structure on a `$context` stack. Several
+ * constructs can desync that stack, and a desynced stack silently corrupts
+ * every later declaration in the same file: methods start being recorded as
+ * free functions, and references inside skipped spans are lost — which reports
+ * live code as a definite orphan.
+ *
+ * Each test here pins one construct that must not desync it.
+ */
+#[CoversClass(SymbolCollector::class)]
+final class SymbolCollectorContextTest extends TestCase
+{
+    private const string DIR = __DIR__ . '/fixtures/orphans/context';
+
+    #[Test]
+    public function a_call_made_only_inside_a_closure_capture_counts_as_a_reference(): void
+    {
+        $collected = $this->collect('ClosureCapture.php');
+
+        self::assertSame(1, $collected->references['onlyCalledInsideTheClosure'] ?? 0);
+    }
+
+    #[Test]
+    public function methods_after_a_closure_capture_are_not_recorded_as_free_functions(): void
+    {
+        $collected = $this->collect('ClosureCapture.php');
+
+        self::assertSame([], $this->freeFunctions($collected));
+        self::assertSame(['ClosureCapture'], $this->typeNames($collected));
+    }
+
+    #[Test]
+    public function a_closure_capture_at_top_level_still_counts_its_body(): void
+    {
+        $collected = $this->collect('top_level_closure.php');
+
+        self::assertSame(1, $collected->references['only_called_inside_the_top_level_closure'] ?? 0);
+    }
+
+    #[Test]
+    public function an_import_inside_a_brace_delimited_namespace_is_still_not_a_reference(): void
+    {
+        // Safety guard: an unused import must never count as a use-site, or a
+        // dead class stays hidden behind its own import line.
+        $collected = $this->collect('braced_namespace.php');
+
+        self::assertArrayNotHasKey('NeverActuallyUsed', $collected->references);
+    }
+
+    #[Test]
+    public function phpcpds_own_source_declares_no_free_functions(): void
+    {
+        // Dogfooding invariant: every declaration in src/ lives inside a type.
+        // A free function here means the context stack desynced on some
+        // construct in our own code — the cheapest smoke alarm we have.
+        $files     = (new FileFinder())->find([__DIR__ . '/../src'], ['.php'], []);
+        $collected = (new SymbolCollector())->collect($files);
+
+        self::assertSame([], $this->freeFunctions($collected));
+    }
+
+    private function collect(string $fixture): CollectedSymbols
+    {
+        return (new SymbolCollector())->collect([self::DIR . '/' . $fixture]);
+    }
+
+    /**
+     * @return list<string> names of everything recorded as a free function
+     */
+    private function freeFunctions(CollectedSymbols $collected): array
+    {
+        $functions = [];
+
+        foreach ($collected->definitions as $symbol) {
+            if ($symbol->kind === Symbol::KIND_FUNCTION) {
+                $functions[] = $symbol->name;
+            }
+        }
+
+        return $functions;
+    }
+
+    /**
+     * @return list<string> names of every declared type
+     */
+    private function typeNames(CollectedSymbols $collected): array
+    {
+        $types = [];
+
+        foreach ($collected->definitions as $symbol) {
+            if ($symbol->kind !== Symbol::KIND_FUNCTION) {
+                $types[] = $symbol->name;
+            }
+        }
+
+        return $types;
+    }
+}

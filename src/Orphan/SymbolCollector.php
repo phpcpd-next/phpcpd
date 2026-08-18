@@ -203,8 +203,12 @@ final class SymbolCollector
                     // An import (`use A\B\C;`) is not a use-site: skip its names
                     // so an unused import cannot mask a dead class. A trait use
                     // inside a type body IS a reference, so leave that to fall
-                    // through to normal name counting.
-                    if (end($context) !== 'type') {
+                    // through to normal name counting. A closure capture
+                    // (`use ($x)`) is the only `use` followed by `(`: skipping it
+                    // would run past the closure's own `{` and desync $context.
+                    $useNext = $this->nextSignificant($tokens, $i + 1);
+
+                    if (($useNext === null || $tokens[$useNext] !== '(') && end($context) !== 'type') {
                         $i = $this->skipToSemicolon($tokens, $i + 1);
                         continue 2;
                     }
