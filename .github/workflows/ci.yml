@@ -40,5 +40,4 @@ jobs:
         run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
 
       - name: Tests
-        run: vendor/bin/phpunit --no-output
-        # Remove --no-output once tests are written and passing
+        run: vendor/bin/phpunit
