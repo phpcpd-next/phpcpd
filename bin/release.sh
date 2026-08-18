@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # Usage: bash bin/release.sh 1.2.0
-# Bumps the version constant and creates a signed git tag.
+# Bumps the version constant and prints the remaining release steps. It does not
+# commit, tag, or push — those stay in your hands.
 set -euo pipefail
 
 VERSION="${1:?Usage: $0 <version>  e.g. 1.2.0}"
-TAG="v${VERSION}"
 FILE="src/Version.php"
+
+# The version constant is always full SemVer; the tag drops a `.0` patch to
+# match the published tags (1.3.0 → v1.3). A non-zero patch keeps it, so a
+# fix release stays distinct from the minor it patches (1.2.1 → v1.2.1), and a
+# pre-release suffix is never stripped (1.3.0-rc.1 → v1.3.0-rc.1).
+TAG="v${VERSION%.0}"
 
 # Validate SemVer shape (no leading v)
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then

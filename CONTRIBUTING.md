@@ -82,7 +82,9 @@ composer release 1.1.0         # bumps the VERSION constant (see bin/release.sh)
 ```
 
 Then follow the steps the script prints: move the `[Unreleased]` CHANGELOG entries
-under the new version heading, commit, and push a **SemVer tag** (`git tag -s v1.1.0`).
+under the new version heading, commit, and push a **signed tag** (`git tag -s v1.1`).
+The version constant is full SemVer, while the tag drops a `.0` patch — the script
+prints the exact tag to use.
 Packagist picks up the tag and publishes it. Verify with:
 
 ```bash
