@@ -36,7 +36,7 @@ jobs:
       - name: Lint (PHP-CS-Fixer dry-run)
         run: vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no
 
-      - name: Static analysis (PHPStan level 9)
+      - name: Static analysis (PHPStan level max)
         run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
 
       - name: Tests
