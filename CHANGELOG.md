@@ -10,6 +10,38 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [Unreleased]
+
+### Fixed — orphan detection: block-structure tracking
+
+Three unrelated PHP constructs desynced the symbol collector's context stack. A desynced stack
+silently corrupted every declaration after it in the same file: methods were recorded as global
+functions, and references inside skipped spans were lost — so live code was reported as a
+**definite orphan**. Because orphans ride along in the default scan as an advisory, this affected
+every run, not only `--orphans`.
+
+- **Closure capture clauses** — `function () use ($x) { ... }` was treated as an import statement and
+  skipped to the next `;`, which lands *inside* the closure body. Every reference in that span was
+  lost, and because the skip bypassed the closure's own `{`, the stack stayed shallow for the rest
+  of the file.
+- **Anonymous classes** — `new class { ... }` did not open a *type* body, so its methods were
+  recorded as global functions and a `use SomeTrait;` inside it was skipped instead of counted as a
+  trait reference.
+- **Curly-brace string interpolation** — `"{$var}"` popped a block level that was never pushed:
+  `token_get_all()` emits an array `T_CURLY_OPEN` token for the opening brace but a plain `}` string
+  token to close it.
+
+Measured against third-party sources: Laravel `Illuminate/Database` went from 2150 symbols scanned
+and 538 definite orphans to 249 and 17; `Illuminate/Support` from 494 and 144 to 147 and 21. The
+findings that disappeared were phantoms — `__clone` and other methods reported as dead *global
+functions*.
+
+Added `SymbolCollectorContextTest`, which pins each construct plus two regression guards (a
+brace-delimited namespace import must stay un-referenced; `::class` must not be read as a
+declaration), and a dogfooding invariant: phpcpd's own `src/` declares no global functions.
+
+---
+
 ## [1.2.0] - 2026-07-19
 
 ### Added — orphan detection (dead code)
@@ -216,6 +248,7 @@ First release of **phpcpd-next**. Picks up where Sebastian Bergmann's archived
 - **`.editorconfig`** — consistent whitespace before any tool runs.
 - **Composer scripts** — `lint`, `lint:fix`, `analyse`, `test`, `check`.
 
+[Unreleased]: https://github.com/phpcpd-next/phpcpd/compare/v1.2...HEAD
 [1.2.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.2
 [1.1.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.1
 [1.0.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.0
