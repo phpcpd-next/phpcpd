@@ -109,6 +109,18 @@ final class SymbolCollectorContextTest extends TestCase
         self::assertSame(1, $collected->references['ClosureCapture'] ?? 0);
     }
 
+    #[Test]
+    public function curly_brace_interpolation_does_not_swallow_a_block_level(): void
+    {
+        // "{$x}" tokenizes as an *array* T_CURLY_OPEN but a plain '}' string
+        // token, so the closing brace must not pop a real block level.
+        $collected = $this->collect('interpolation.php');
+
+        self::assertSame([], $this->freeFunctions($collected));
+        self::assertSame(['Interpolation'], $this->typeNames($collected));
+        self::assertSame(1, $collected->references['TraitUsedAfterInterpolation'] ?? 0);
+    }
+
     private function collect(string $fixture): CollectedSymbols
     {
         return (new SymbolCollector())->collect([self::DIR . '/' . $fixture]);

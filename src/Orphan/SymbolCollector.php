@@ -30,7 +30,9 @@ use const T_ATTRIBUTE;
 use const T_CLASS;
 use const T_COMMENT;
 use const T_CONSTANT_ENCAPSED_STRING;
+use const T_CURLY_OPEN;
 use const T_DOC_COMMENT;
+use const T_DOLLAR_OPEN_CURLY_BRACES;
 use const T_ENUM;
 use const T_EXTENDS;
 use const T_FUNCTION;
@@ -173,6 +175,15 @@ final class SymbolCollector
 
                 case T_DOC_COMMENT:
                     $lastDoc = $text;
+                    break;
+
+                case T_CURLY_OPEN:
+                case T_DOLLAR_OPEN_CURLY_BRACES:
+                    // Interpolation ("... {$x} ...") emits an *array* token for
+                    // the opening brace but a plain '}' string token to close
+                    // it. Without a matching push, that '}' pops a real block
+                    // level and $context stays shallow for the rest of the file.
+                    $context[] = 'other';
                     break;
 
                 case T_ABSTRACT:
