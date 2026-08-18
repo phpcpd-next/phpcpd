@@ -83,6 +83,32 @@ final class SymbolCollectorContextTest extends TestCase
         self::assertSame([], $this->freeFunctions($collected));
     }
 
+    #[Test]
+    public function a_trait_used_only_by_an_anonymous_class_counts_as_referenced(): void
+    {
+        $collected = $this->collect('anonymous_class.php');
+
+        self::assertSame(1, $collected->references['TraitUsedOnlyByAnonymousClass'] ?? 0);
+    }
+
+    #[Test]
+    public function anonymous_class_methods_are_not_recorded_as_free_functions(): void
+    {
+        $collected = $this->collect('anonymous_class.php');
+
+        self::assertSame([], $this->freeFunctions($collected));
+    }
+
+    #[Test]
+    public function the_class_constant_is_not_mistaken_for_a_declaration(): void
+    {
+        $collected = $this->collect('class_constant.php');
+
+        self::assertSame([], $this->freeFunctions($collected));
+        self::assertSame(['ClassConstantHost'], $this->typeNames($collected));
+        self::assertSame(1, $collected->references['ClosureCapture'] ?? 0);
+    }
+
     private function collect(string $fixture): CollectedSymbols
     {
         return (new SymbolCollector())->collect([self::DIR . '/' . $fixture]);

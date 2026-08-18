@@ -32,7 +32,9 @@ use const T_COMMENT;
 use const T_CONSTANT_ENCAPSED_STRING;
 use const T_DOC_COMMENT;
 use const T_ENUM;
+use const T_EXTENDS;
 use const T_FUNCTION;
+use const T_IMPLEMENTS;
 use const T_INTERFACE;
 use const T_NAMESPACE;
 use const T_NAME_FULLY_QUALIFIED;
@@ -245,6 +247,14 @@ final class SymbolCollector
                         continue 2;
                     }
 
+                    // An anonymous class declares no symbol but still opens a
+                    // *type* body: its methods are methods, and a `use T;`
+                    // inside it is a trait reference. Only `::class` gets here
+                    // without opening a body.
+                    if ($nameIndex !== null && $this->opensClassBody($tokens[$nameIndex])) {
+                        $pendingBlock = 'type';
+                    }
+
                     break;
 
                 case T_FUNCTION:
@@ -384,6 +394,21 @@ final class SymbolCollector
         }
 
         return null;
+    }
+
+    /**
+     * Does this token, following the `class` keyword, begin an anonymous class
+     * declaration rather than the `::class` constant?
+     *
+     * @param array{0: int, 1: string, 2: int}|string $token
+     */
+    private function opensClassBody(array|string $token): bool
+    {
+        if (is_string($token)) {
+            return $token === '{' || $token === '(';
+        }
+
+        return $token[0] === T_EXTENDS || $token[0] === T_IMPLEMENTS;
     }
 
     /**
