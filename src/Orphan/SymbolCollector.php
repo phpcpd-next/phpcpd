@@ -26,6 +26,7 @@ use function token_get_all;
 use function trim;
 
 use const T_ABSTRACT;
+use const T_AS;
 use const T_ATTRIBUTE;
 use const T_CLASS;
 use const T_COMMENT;
@@ -142,6 +143,8 @@ final class SymbolCollector
         $abstract      = false;
         $context       = [];      // stack of body kinds: 'type' | 'other'
         $pendingBlock  = null;    // what the next '{' opens
+        $aliases       = [];      // alias short name => imported short name
+        $localRefs     = [];      // names referenced in *this* file
 
         $i = 0;
 
@@ -222,7 +225,9 @@ final class SymbolCollector
                     $useNext = $this->nextSignificant($tokens, $i + 1);
 
                     if (($useNext === null || $tokens[$useNext] !== '(') && end($context) !== 'type') {
-                        $i = $this->skipToSemicolon($tokens, $i + 1);
+                        $end = $this->skipToSemicolon($tokens, $i + 1);
+                        $this->collectImportAliases($tokens, $i + 1, $end, $aliases);
+                        $i = $end;
                         continue 2;
                     }
 
@@ -305,6 +310,7 @@ final class SymbolCollector
 
                 case T_STRING:
                     $references[$text] = ($references[$text] ?? 0) + 1;
+                    $localRefs[$text]  = true;
                     break;
 
                 case T_NAME_QUALIFIED:
@@ -312,6 +318,7 @@ final class SymbolCollector
                 case T_NAME_RELATIVE:
                     $short              = $this->shortName($text);
                     $references[$short] = ($references[$short] ?? 0) + 1;
+                    $localRefs[$short]  = true;
                     break;
 
                 case T_CONSTANT_ENCAPSED_STRING:
@@ -320,6 +327,63 @@ final class SymbolCollector
             }
 
             $i++;
+        }
+
+        // A class imported under an alias is referenced by that alias, never by
+        // its own name. Credit the imported name, but only when the alias was
+        // actually used in this file — an unused import must still not count.
+        foreach ($aliases as $alias => $imported) {
+            if (isset($localRefs[$alias])) {
+                $references[$imported] = ($references[$imported] ?? 0) + 1;
+            }
+        }
+    }
+
+    /**
+     * Record `use A\B\Original as Alias;` pairs from an import statement, in
+     * every form it takes: single, comma-separated, and grouped
+     * (`use A\{B as C};`). Method aliasing inside a trait-use block never
+     * reaches here — that has a type-body context and is counted normally.
+     *
+     * @param array<int, array{0: int, 1: string, 2: int}|string> $tokens
+     * @param array<string, string>                               $aliases
+     */
+    private function collectImportAliases(array $tokens, int $from, int $to, array &$aliases): void
+    {
+        $lastName    = null;
+        $expectAlias = false;
+
+        for ($i = $from; $i < $to; $i++) {
+            $token = $tokens[$i];
+
+            if (is_string($token)) {
+                continue;
+            }
+
+            [$id, $text] = [$token[0], $token[1]];
+
+            if ($id === T_WHITESPACE || $id === T_COMMENT || $id === T_DOC_COMMENT) {
+                continue;
+            }
+
+            if ($id === T_AS) {
+                $expectAlias = true;
+                continue;
+            }
+
+            if ($id !== T_STRING && $id !== T_NAME_QUALIFIED && $id !== T_NAME_FULLY_QUALIFIED) {
+                continue;
+            }
+
+            if ($expectAlias && $lastName !== null) {
+                $aliases[$text] = $this->shortName($lastName);
+                $expectAlias    = false;
+                $lastName       = null;
+
+                continue;
+            }
+
+            $lastName = $text;
         }
     }
 

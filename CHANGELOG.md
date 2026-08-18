@@ -12,7 +12,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Fixed — orphan detection: block-structure tracking
+### Fixed — orphan detection: block-structure tracking and aliased imports
 
 Three unrelated PHP constructs desynced the symbol collector's context stack. A desynced stack
 silently corrupted every declaration after it in the same file: methods were recorded as global
@@ -31,14 +31,23 @@ every run, not only `--orphans`.
   `token_get_all()` emits an array `T_CURLY_OPEN` token for the opening brace but a plain `}` string
   token to close it.
 
-Measured against third-party sources: Laravel `Illuminate/Database` went from 2150 symbols scanned
-and 538 definite orphans to 249 and 17; `Illuminate/Support` from 494 and 144 to 147 and 21. The
-findings that disappeared were phantoms — `__clone` and other methods reported as dead *global
-functions*.
+A fourth, separate cause was found while re-measuring the survivors:
 
-Added `SymbolCollectorContextTest`, which pins each construct plus two regression guards (a
+- **Aliased imports** — `use A\B\Original as Alias;` means the class is only ever written as
+  `Alias`, so `Original` was never counted and a class used solely under an alias was reported as a
+  definite orphan. Alias pairs are now resolved for single, comma-separated, grouped
+  (`use A\{B as C};`) and `use function ... as ...` forms. An import whose alias is never used still
+  counts nothing, so an unused import cannot mask a dead class.
+
+Measured against third-party sources: Laravel `Illuminate/Database` went from 2150 symbols scanned
+and 538 definite orphans to 249 and 13; `Illuminate/Support` from 494 and 144 to 147 and 21. The
+findings that disappeared were phantoms — `__clone` and other methods reported as dead *global
+functions* — plus the four grammar classes Laravel imports under an alias.
+
+Added `SymbolCollectorContextTest`, which pins each construct plus three regression guards (a
 brace-delimited namespace import must stay un-referenced; `::class` must not be read as a
-declaration), and a dogfooding invariant: phpcpd's own `src/` declares no global functions.
+declaration; an unused aliased import must credit nothing), and a dogfooding invariant: phpcpd's own
+`src/` declares no global functions.
 
 ---
 

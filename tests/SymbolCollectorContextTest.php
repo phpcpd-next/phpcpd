@@ -72,6 +72,41 @@ final class SymbolCollectorContextTest extends TestCase
     }
 
     #[Test]
+    public function a_class_imported_under_an_alias_counts_as_referenced(): void
+    {
+        // `use A\B\Original as Alias;` means the class is only ever written as
+        // `Alias`, so without resolving the pair the original looks dead.
+        $collected = $this->collect('aliased_import.php');
+
+        self::assertSame(1, $collected->references['PostgresGrammar'] ?? 0);
+    }
+
+    #[Test]
+    public function an_aliased_import_that_is_never_used_counts_nothing(): void
+    {
+        // The guarantee resolving aliases must not break: an unused import is
+        // still not a use-site, or a dead class hides behind its own import.
+        $collected = $this->collect('unused_aliased_import.php');
+
+        self::assertArrayNotHasKey('NeverUsedGrammar', $collected->references);
+    }
+
+    #[Test]
+    public function aliases_are_resolved_in_every_import_form(): void
+    {
+        // Comma-separated, braced group, and `use function ... as ...` — each
+        // credited only when its own alias is the one actually used.
+        $collected = $this->collect('aliased_import_forms.php');
+
+        self::assertSame(1, $collected->references['CommaAliased'] ?? 0);
+        self::assertSame(1, $collected->references['BracedAliased'] ?? 0);
+        self::assertSame(1, $collected->references['aliased_helper'] ?? 0);
+
+        self::assertArrayNotHasKey('CommaSkipped', $collected->references);
+        self::assertArrayNotHasKey('BracedSkipped', $collected->references);
+    }
+
+    #[Test]
     public function phpcpds_own_source_declares_no_free_functions(): void
     {
         // Dogfooding invariant: every declaration in src/ lives inside a type.
