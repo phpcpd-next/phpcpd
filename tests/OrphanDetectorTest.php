@@ -38,6 +38,7 @@ final class OrphanDetectorTest extends TestCase
 {
     private const string DIR      = __DIR__ . '/fixtures/orphans/src';
     private const string REPL_DIR = __DIR__ . '/fixtures/orphans/replacement';
+    private const string CONTRACT_DIR = __DIR__ . '/fixtures/orphans/contract';
 
     #[Test]
     public function it_reports_an_unreferenced_concrete_class_as_a_definite_orphan(): void
@@ -165,6 +166,27 @@ final class OrphanDetectorTest extends TestCase
         self::assertTrue($result->isEmpty());
         self::assertFalse($result->hasDefiniteOrphans());
         self::assertSame(0, $result->symbolsScanned);
+    }
+
+    #[Test]
+    public function an_unreferenced_trait_is_possible_rather_than_definite(): void
+    {
+        // A trait exists to be used by *other* classes, so a library ships one
+        // for consumers that are never part of the scan. Same reasoning the
+        // interface/abstract tier already uses: report it, do not fail CI on it.
+        $result = Orphans::detect(self::CONTRACT_DIR);
+
+        self::assertContains('Demo\\Contract\\UnusedTrait', $this->fqns($result->possible()));
+        self::assertNotContains('Demo\\Contract\\UnusedTrait', $this->fqns($result->definite()));
+    }
+
+    #[Test]
+    public function an_unreferenced_concrete_class_stays_definite(): void
+    {
+        // The counterpart guard: demoting traits must not soften plain classes.
+        $result = Orphans::detect(self::CONTRACT_DIR);
+
+        self::assertContains('Demo\\Contract\\UnusedConcreteClass', $this->fqns($result->definite()));
     }
 
     /**

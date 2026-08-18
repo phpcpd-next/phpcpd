@@ -44,6 +44,18 @@ and 538 definite orphans to 249 and 13; `Illuminate/Support` from 494 and 144 to
 findings that disappeared were phantoms — `__clone` and other methods reported as dead *global
 functions* — plus the four grammar classes Laravel imports under an alias.
 
+### Changed — an unreferenced trait is a *possible* orphan, not a definite one
+
+A trait exists to be consumed by *other* classes, so a library ships traits for consumers that are
+never part of the scan — Laravel's `HasFactory` and `HasBuilder` are the archetype. Traits now join
+interfaces and abstract classes in the contract tier: still reported, but no longer failing the
+build. Nothing is hidden — the total finding count is unchanged, only the confidence tier moves.
+Across `laravel/framework` this shifts 13 findings, from 48 definite / 32 possible to 35 / 45.
+
+Symbols that a source-only scan genuinely cannot resolve — a service provider discovered through
+`composer.json`, a cast class named only in a downstream model — remain out of scope; `@api` /
+`@phpcpd-keep` are the escape hatch for those.
+
 Added `SymbolCollectorContextTest`, which pins each construct plus three regression guards (a
 brace-delimited namespace import must stay un-referenced; `::class` must not be read as a
 declaration; an unused aliased import must credit nothing), and a dogfooding invariant: phpcpd's own

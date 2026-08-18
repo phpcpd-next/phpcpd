@@ -28,8 +28,8 @@ use LucianoPereira\PhpcpdNext\CodeCloneMap;
  *      (`#[Route]`, a test class) → not an orphan at all. (shipmonk providers,
  *      Psalm's `@psalm-api`.)
  *   2. Referenced anywhere in code → live.
- *   3. Unreferenced but a contract (interface / abstract) or mentioned only in a
- *      string literal → *possible* orphan; reported, does not fail CI.
+ *   3. Unreferenced but a contract (interface / abstract / trait) or mentioned
+ *      only in a string literal → *possible* orphan; reported, does not fail CI.
  *      (Psalm's PossiblyUnusedClass; a hedge against DI / dynamic dispatch.)
  *   4. Otherwise → a definite orphan. (Psalm's UnusedClass; phpunused's
  *      unreferenced file.)
@@ -107,9 +107,11 @@ final class OrphanDetector
             return [
                 'symbol'     => $symbol,
                 'confidence' => Orphan::CONFIDENCE_POSSIBLE,
-                'reason'     => $symbol->kind === Symbol::KIND_INTERFACE
-                    ? 'never referenced (interface — may be implemented outside the scanned set)'
-                    : 'never referenced (abstract — may be extended outside the scanned set)',
+                'reason'     => match ($symbol->kind) {
+                    Symbol::KIND_INTERFACE => 'never referenced (interface — may be implemented outside the scanned set)',
+                    Symbol::KIND_TRAIT     => 'never referenced (trait — may be used by classes outside the scanned set)',
+                    default                => 'never referenced (abstract — may be extended outside the scanned set)',
+                },
             ];
         }
 

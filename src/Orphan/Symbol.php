@@ -44,14 +44,18 @@ final readonly class Symbol
     ) {}
 
     /**
-     * Interfaces and abstract classes are contracts: an unreferenced one may
-     * still be implemented or extended by code outside the scanned set (a
-     * plugin, a downstream package). Reporting them as *definitely* dead is
-     * unsafe, so they are demoted to the "possible" tier — mirroring Psalm's
-     * split between UnusedClass and PossiblyUnusedClass.
+     * Interfaces, abstract classes, and traits are contracts: an unreferenced
+     * one may still be implemented, extended, or used by code outside the
+     * scanned set (a plugin, a downstream package). A trait in particular
+     * exists to be consumed by *other* classes, so a library ships them for
+     * consumers that are not in the scan at all. Reporting them as
+     * *definitely* dead is unsafe, so they are demoted to the "possible" tier
+     * — mirroring Psalm's split between UnusedClass and PossiblyUnusedClass.
      */
     public function isContract(): bool
     {
-        return $this->kind === self::KIND_INTERFACE || $this->abstract;
+        return $this->kind === self::KIND_INTERFACE
+            || $this->kind === self::KIND_TRAIT
+            || $this->abstract;
     }
 }
