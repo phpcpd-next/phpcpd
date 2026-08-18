@@ -218,7 +218,7 @@ Each finding is **explained**, not just listed:
 | Tier | Meaning | Exit code |
 |------|---------|-----------|
 | **Definite** | Referenced nowhere; safe to delete. | Non-zero (CI gate) |
-| **Possible** | A contract (interface / `abstract`) an out-of-tree package may implement, or a name that appears only in a **string literal** (a candidate for `new $class` / a DI-container id). | Zero (report only) |
+| **Possible** | A contract (interface / `abstract` / `trait`) an out-of-tree package may implement, extend, or `use`, or a name that appears only in a **string literal** (a candidate for `new $class` / a DI-container id). | Zero (report only) |
 
 **What it won't false-alarm on** — framework entry points are reachable even when unreferenced:
 

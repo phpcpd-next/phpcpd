@@ -10,7 +10,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
-## [Unreleased]
+## [1.3.0] - 2026-08-18
 
 ### Fixed — orphan detection: block-structure tracking and aliased imports
 
@@ -269,7 +269,7 @@ First release of **phpcpd-next**. Picks up where Sebastian Bergmann's archived
 - **`.editorconfig`** — consistent whitespace before any tool runs.
 - **Composer scripts** — `lint`, `lint:fix`, `analyse`, `test`, `check`.
 
-[Unreleased]: https://github.com/phpcpd-next/phpcpd/compare/v1.2...HEAD
+[1.3.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.3
 [1.2.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.2
 [1.1.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.1
 [1.0.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.0

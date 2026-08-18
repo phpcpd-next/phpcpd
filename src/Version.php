@@ -14,5 +14,5 @@ namespace LucianoPereira\PhpcpdNext;
 
 final class Version
 {
-    public const string NUMBER = '1.2.0';
+    public const string NUMBER = '1.3.0';
 }
