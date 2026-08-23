@@ -14,8 +14,6 @@ namespace LucianoPereira\PhpcpdNext;
 
 use function array_key_exists;
 use function count;
-use function implode;
-use function in_array;
 use function sprintf;
 use function str_starts_with;
 use function strlen;
@@ -146,13 +144,10 @@ final class OptionParser
      */
     private function validateValue(OptionDefinition $definition, string $value): void
     {
-        if ($definition->allowedValues !== null && !in_array($value, $definition->allowedValues, true)) {
-            throw new ArgumentsBuilderException(sprintf(
-                'Invalid value "%s" for --%s (allowed: %s)',
-                $value,
-                $definition->name,
-                implode(', ', $definition->allowedValues),
-            ));
+        $invalid = $definition->firstInvalid($value);
+
+        if ($invalid !== null) {
+            throw new ArgumentsBuilderException($definition->invalidValueMessage($invalid));
         }
     }
 }

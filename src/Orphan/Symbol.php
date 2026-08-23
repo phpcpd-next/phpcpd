@@ -32,6 +32,14 @@ final readonly class Symbol
     public const string KIND_ENUM      = 'enum';
     public const string KIND_FUNCTION  = 'function';
 
+    /**
+     * @param ?string $rule       the {@see Rule} that already accounts for this
+     *                            symbol at collection time (a docblock tag, a
+     *                            framework attribute, an enclosing existence
+     *                            guard). Null means nothing local explains it.
+     * @param ?string $ruleReason what that rule found — the author's stated
+     *                            reason, or the construct that fired.
+     */
     public function __construct(
         public string $kind,
         public string $name,
@@ -39,8 +47,8 @@ final readonly class Symbol
         public string $file,
         public int $line,
         public bool $abstract = false,
-        public ?string $entrypoint = null,
-        public bool $suppressed = false,
+        public ?string $rule = null,
+        public ?string $ruleReason = null,
     ) {}
 
     /**

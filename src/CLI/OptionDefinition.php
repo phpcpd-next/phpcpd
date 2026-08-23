@@ -12,6 +12,12 @@ declare(strict_types=1);
 
 namespace LucianoPereira\PhpcpdNext;
 
+use function explode;
+use function implode;
+use function in_array;
+use function sprintf;
+use function trim;
+
 /**
  * One CLI option, declared once and used for parsing, validation, and help
  * generation — so the parser config and the --help text cannot drift apart.
@@ -20,6 +26,7 @@ final readonly class OptionDefinition
 {
     /**
      * @param ?non-empty-list<string> $allowedValues restrict the value to this set (validation)
+     * @param bool $listValue the value is a comma-separated list; each element is validated
      */
     public function __construct(
         public string $name,
@@ -31,5 +38,38 @@ final readonly class OptionDefinition
         public string $description = '',
         public string $group = '',
         public bool $advanced = false,
+        public bool $listValue = false,
     ) {}
+
+    /**
+     * The first element of $value this option does not allow, or null when the
+     * whole value is acceptable. Shared by the argv parser and the config file
+     * reader so a setting cannot slip past a check a flag would have failed.
+     */
+    public function firstInvalid(string $value): ?string
+    {
+        if ($this->allowedValues === null) {
+            return null;
+        }
+
+        foreach ($this->listValue ? explode(',', $value) : [$value] as $candidate) {
+            $candidate = trim($candidate);
+
+            if (!in_array($candidate, $this->allowedValues, true)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    public function invalidValueMessage(string $candidate): string
+    {
+        return sprintf(
+            'Invalid value "%s" for --%s (allowed: %s)',
+            $candidate,
+            $this->name,
+            implode(', ', $this->allowedValues ?? []),
+        );
+    }
 }

@@ -1,0 +1,13 @@
+{
+    "name": "demo/app",
+    "autoload": {
+        "psr-4": { "Demo\\App\\": "src/" },
+        "files": ["src/helpers.php"]
+    },
+    "bin": ["bin/console"],
+    "extra": {
+        "laravel": {
+            "providers": ["Demo\\App\\Support\\ProviderWired"]
+        }
+    }
+}

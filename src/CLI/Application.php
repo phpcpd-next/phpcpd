@@ -14,7 +14,9 @@ declare(strict_types=1);
 namespace LucianoPereira\PhpcpdNext;
 
 use function count;
+use function in_array;
 use function printf;
+use function sort;
 
 use const PHP_EOL;
 
@@ -26,8 +28,11 @@ use LucianoPereira\PhpcpdNext\Log\Logger;
 use LucianoPereira\PhpcpdNext\Log\PMD;
 use LucianoPereira\PhpcpdNext\Log\Sarif;
 use LucianoPereira\PhpcpdNext\Log\Text;
+use LucianoPereira\PhpcpdNext\Orphan\ComposerManifest;
+use LucianoPereira\PhpcpdNext\Orphan\OrphanConfiguration;
 use LucianoPereira\PhpcpdNext\Orphan\OrphanDetector;
 use LucianoPereira\PhpcpdNext\Orphan\OrphanTextReport;
+use LucianoPereira\PhpcpdNext\Orphan\ProjectContext;
 use LucianoPereira\PhpcpdNext\Util\FileFinder;
 use LucianoPereira\PhpcpdNext\Util\ResourceUsageFormatter;
 use LucianoPereira\PhpcpdNext\Util\Timer;
@@ -63,6 +68,12 @@ final class Application
 
         print PHP_EOL;
 
+        if ($arguments->showConfig()) {
+            print ConfigReport::render($argv, $arguments);
+
+            return 0;
+        }
+
         if ($arguments->help()) {
             $this->help();
 
@@ -73,6 +84,7 @@ final class Application
             $arguments->directories(),
             $arguments->suffixes(),
             $arguments->exclude(),
+            $arguments->defaultExcludes(),
         );
 
         if (empty($files)) {
@@ -81,11 +93,20 @@ final class Application
             return 1;
         }
 
+        // Entry points are resolved once, for both modes: the advisory orphan
+        // report in a default run must see the same file set --orphans does, or
+        // the two modes disagree about whether a symbol is reachable.
+        $orphanConfig  = $this->orphanConfiguration($arguments);
+        $orphanContext = ProjectContext::discover($arguments->directories(), $arguments->exclude(), $orphanConfig);
+        $files         = $this->withManifestEntryPoints($files, $orphanContext);
+
         $config = new StrategyConfiguration($arguments);
 
         if ($arguments->orphans()) {
-            return $this->detectOrphans($files, $config);
+            return $this->detectOrphans($files, $config, $arguments, $orphanConfig, $orphanContext);
         }
+
+        $this->printScope($arguments, count($files));
 
         $timer = new Timer();
         $timer->start();
@@ -145,7 +166,9 @@ final class Application
         // Orphans ride along by default as an advisory: reported (reusing the
         // clone map just computed to flag superseded copies), but only clones
         // gate the exit code. Run `--orphans` for the full, build-failing report.
-        (new OrphanTextReport())->printAdvisory((new OrphanDetector())->detect($files, $clones));
+        (new OrphanTextReport())->printAdvisory(
+            (new OrphanDetector())->detect($files, $clones, $orphanConfig, $orphanContext),
+        );
 
         print (new ResourceUsageFormatter())->format($timer->seconds(), count($files)) . PHP_EOL;
 
@@ -160,19 +183,85 @@ final class Application
      *
      * @param list<string> $files
      */
-    private function detectOrphans(array $files, StrategyConfiguration $config): int
-    {
+    private function detectOrphans(
+        array $files,
+        StrategyConfiguration $config,
+        Arguments $arguments,
+        OrphanConfiguration $orphanConfig,
+        ProjectContext $context,
+    ): int {
         $timer = new Timer();
         $timer->start();
 
-        $clones = (new Engine($config, 'rabin-karp'))->detect($files);
-        $result = (new OrphanDetector())->detect($files, $clones);
+        $this->printScope($arguments, count($files));
 
-        (new OrphanTextReport())->printResult($result);
+        $clones = (new Engine($config, 'rabin-karp'))->detect($files);
+        $result = (new OrphanDetector())->detect($files, $clones, $orphanConfig, $context);
+
+        (new OrphanTextReport())->printResult($result, $orphanConfig);
 
         print (new ResourceUsageFormatter())->format($timer->seconds(), count($files)) . PHP_EOL;
 
-        return $result->hasDefiniteOrphans() ? 1 : 0;
+        return $result->fails($orphanConfig) ? 1 : 0;
+    }
+
+    private function orphanConfiguration(Arguments $arguments): OrphanConfiguration
+    {
+        return new OrphanConfiguration(
+            $arguments->directories(),
+            $arguments->noSuppress(),
+            $arguments->failOn(),
+            $arguments->explain(),
+        );
+    }
+
+    /**
+     * Console entry points declared in composer's `bin` are conventionally
+     * extensionless, so a `--suffix .php` scan never opens the one file where an
+     * application wires its top level together.
+     *
+     * @param list<string> $files
+     * @return list<string>
+     */
+    private function withManifestEntryPoints(array $files, ProjectContext $context): array
+    {
+        if (!$context->manifestApplies || !$context->manifest instanceof ComposerManifest) {
+            return $files;
+        }
+
+        foreach ($context->manifest->binFiles as $bin) {
+            if (!in_array($bin, $files, true)) {
+                $files[] = $bin;
+            }
+        }
+
+        sort($files);
+
+        return $files;
+    }
+
+    /**
+     * State the scope of the run. Silence about scope is what let a scan of a
+     * generated cache directory inflate a run 52x and still report a green gate:
+     * a file count wildly out of step with the project is obvious at a glance,
+     * but only if it is printed.
+     */
+    private function printScope(Arguments $arguments, int $files): void
+    {
+        $patterns = count($arguments->exclude())
+            + ($arguments->defaultExcludes() ? FileFinder::defaultExcludeCount() : 0);
+
+        printf(
+            'Scanned %s (%s, %s applied).' . PHP_EOL . PHP_EOL,
+            $this->plural($files, 'file'),
+            $this->plural(count($arguments->directories()), 'directory', 'directories'),
+            $this->plural($patterns, 'exclude pattern'),
+        );
+    }
+
+    private function plural(int $count, string $singular, ?string $plural = null): string
+    {
+        return $count . ' ' . ($count === 1 ? $singular : $plural ?? $singular . 's');
     }
 
     private function printVersion(): void

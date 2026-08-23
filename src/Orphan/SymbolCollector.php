@@ -13,11 +13,15 @@ declare(strict_types=1);
 namespace LucianoPereira\PhpcpdNext\Orphan;
 
 use function array_pop;
+
 use function count;
 use function end;
 use function file_get_contents;
 use function in_array;
 use function is_string;
+use function preg_match;
+use function preg_quote;
+use function rtrim;
 use function str_contains;
 use function str_ends_with;
 use function strrpos;
@@ -26,6 +30,7 @@ use function token_get_all;
 use function trim;
 
 use const T_ABSTRACT;
+
 use const T_AS;
 use const T_ATTRIBUTE;
 use const T_CLASS;
@@ -37,6 +42,7 @@ use const T_DOLLAR_OPEN_CURLY_BRACES;
 use const T_ENUM;
 use const T_EXTENDS;
 use const T_FUNCTION;
+use const T_IF;
 use const T_IMPLEMENTS;
 use const T_INTERFACE;
 use const T_NAMESPACE;
@@ -47,6 +53,8 @@ use const T_STRING;
 use const T_TRAIT;
 use const T_USE;
 use const T_WHITESPACE;
+
+use LucianoPereira\PhpcpdNext\Util\TokenCursor;
 
 /**
  * Turns a set of PHP files into a {@see CollectedSymbols}: what is declared and
@@ -102,6 +110,26 @@ final class SymbolCollector
         '@api', '@psalm-api', '@phpstan-api', '@phpcpd-keep', '@phpcpd-ignore-orphan',
     ];
 
+    /**
+     * Declares a symbol deliberately not wired yet. The opposite claim to a keep
+     * tag — which asserts the symbol IS reachable — so the two must not merge:
+     * only this one carries an expiry, and only this one is worth reporting when
+     * the symbol finally does get referenced.
+     */
+    private const string PLANNED_TAG = '@phpcpd-planned';
+
+    /**
+     * A declaration guarded by one of these is conditional on its own name not
+     * already existing, which is a direct statement that it exists for a caller
+     * outside this codebase. On a runtime where the name is taken it is never
+     * declared at all, so a same-project reference to it would be a bug.
+     *
+     * @var list<string>
+     */
+    private const array EXISTENCE_GUARDS = [
+        'function_exists', 'class_exists', 'interface_exists', 'trait_exists', 'enum_exists',
+    ];
+
     /** @param list<string> $files */
     public function collect(array $files): CollectedSymbols
     {
@@ -123,9 +151,9 @@ final class SymbolCollector
     }
 
     /**
-     * @param list<Symbol>        $definitions
-     * @param array<string, int>  $references
-     * @param array<string, bool> $stringNames
+     * @param list<Symbol>          $definitions
+     * @param array<string, int>    $references
+     * @param array<string, string> $stringNames
      */
     private function collectFile(
         string $file,
@@ -193,6 +221,13 @@ final class SymbolCollector
                     $abstract = true;
                     break;
 
+                case T_IF:
+                    if ($this->isExistenceGuard($tokens, $i + 1)) {
+                        $pendingBlock = 'guard';
+                    }
+
+                    break;
+
                 case T_ATTRIBUTE:
                     // Record the attribute's short name for entry-point scoring.
                     // The name token itself is still scanned normally below, so
@@ -242,7 +277,8 @@ final class SymbolCollector
                     // A name after the keyword marks a real declaration; anything
                     // else is anonymous (`new class`) or the `::class` constant.
                     if ($nameIndex !== null && $tokens[$nameIndex][0] === T_STRING) {
-                        $name = $tokens[$nameIndex][1];
+                        $name         = $tokens[$nameIndex][1];
+                        [$rule, $why] = $this->ruleFor($this->kindFor($id), $name, $pendingAttrs, $lastDoc, $context);
 
                         $definitions[] = new Symbol(
                             kind:       $this->kindFor($id),
@@ -251,8 +287,8 @@ final class SymbolCollector
                             file:       $file,
                             line:       $token[2],
                             abstract:   $abstract && $id === T_CLASS,
-                            entrypoint: $this->entrypointReason($this->kindFor($id), $name, $pendingAttrs),
-                            suppressed: $this->isSuppressed($lastDoc),
+                            rule:       $rule,
+                            ruleReason: $why,
                         );
 
                         $pendingBlock = 'type';
@@ -286,15 +322,17 @@ final class SymbolCollector
 
                     if ($nameIndex !== null && !is_string($tokens[$nameIndex]) && $tokens[$nameIndex][0] === T_STRING) {
                         if (!$isMethod) {
-                            $name          = $tokens[$nameIndex][1];
+                            $name         = $tokens[$nameIndex][1];
+                            [$rule, $why] = $this->ruleFor(Symbol::KIND_FUNCTION, $name, $pendingAttrs, $lastDoc, $context);
+
                             $definitions[] = new Symbol(
                                 kind:       Symbol::KIND_FUNCTION,
                                 name:       $name,
                                 fqn:        $namespace === '' ? $name : $namespace . '\\' . $name,
                                 file:       $file,
                                 line:       $token[2],
-                                entrypoint: $this->entrypointReason(Symbol::KIND_FUNCTION, $name, $pendingAttrs),
-                                suppressed: $this->isSuppressed($lastDoc),
+                                rule:       $rule,
+                                ruleReason: $why,
                             );
                         }
 
@@ -322,7 +360,7 @@ final class SymbolCollector
                     break;
 
                 case T_CONSTANT_ENCAPSED_STRING:
-                    $this->recordStringName($text, $stringNames);
+                    $this->recordStringName($text, $file, $token[2], $stringNames);
                     break;
             }
 
@@ -398,9 +436,12 @@ final class SymbolCollector
     }
 
     /**
-     * @param array<string, bool> $stringNames
+     * Keep the FIRST location a name was seen as a string; that is the one the
+     * report cites, and a stable choice makes the output reproducible.
+     *
+     * @param array<string, string> $stringNames
      */
-    private function recordStringName(string $literal, array &$stringNames): void
+    private function recordStringName(string $literal, string $file, int $line, array &$stringNames): void
     {
         $value = trim($literal, "'\"");
 
@@ -408,18 +449,46 @@ final class SymbolCollector
             return;
         }
 
-        $stringNames[$value]                  = true;
-        $stringNames[$this->shortName($value)] = true;
+        $where = $file . ':' . $line;
+        $short = $this->shortName($value);
+
+        $stringNames[$value] ??= $where;
+        $stringNames[$short] ??= $where;
     }
 
     /**
+     * Which rule, if any, already accounts for this symbol — checked in order of
+     * how specific the claim is. An author-stated intent outranks a structural
+     * one, because only the author knows whether the symbol is reachable
+     * (`@api`) or knowingly unwired (`@phpcpd-planned`).
+     *
      * @param list<string> $pendingAttrs
+     * @param list<string> $context
+     * @return array{0: ?string, 1: ?string} rule name, reason
      */
-    private function entrypointReason(string $kind, string $name, array $pendingAttrs): ?string
+    private function ruleFor(string $kind, string $name, array $pendingAttrs, ?string $doc, array $context): array
     {
+        $planned = $this->docTag($doc, self::PLANNED_TAG);
+
+        if ($planned !== null) {
+            return [Rule::PLANNED, $planned === '' ? null : $planned];
+        }
+
+        foreach (self::KEEP_TAGS as $tag) {
+            $reason = $this->docTag($doc, $tag);
+
+            if ($reason !== null) {
+                return [Rule::KEEP, $reason === '' ? $tag : $reason];
+            }
+        }
+
+        if (in_array('guard', $context, true)) {
+            return [Rule::CONDITIONAL, 'declared inside an existence guard — polyfill or compatibility shim'];
+        }
+
         foreach ($pendingAttrs as $attribute) {
             if (in_array($attribute, self::ENTRYPOINT_ATTRIBUTES, true)) {
-                return 'wired via #[' . $attribute . ']';
+                return [Rule::ENTRYPOINT, 'wired via #[' . $attribute . ']'];
             }
         }
 
@@ -428,25 +497,52 @@ final class SymbolCollector
         // classes by the class-name convention, which is more reliable than a
         // path match (fixtures and helpers also live under tests/).
         if ($kind === Symbol::KIND_CLASS && str_ends_with($name, 'Test')) {
-            return 'test class';
+            return [Rule::ENTRYPOINT, 'test class'];
         }
 
-        return null;
+        return [null, null];
     }
 
-    private function isSuppressed(?string $doc): bool
+    /**
+     * Find $tag in a docblock and return the text following it, or null when the
+     * tag is absent. The tag must open the docblock or start a line after the
+     * leading `*` — an unanchored `str_contains` also fires on prose such as
+     * "Unlike @api classes, this one is internal", silently suppressing a real
+     * finding.
+     */
+    private function docTag(?string $doc, string $tag): ?string
     {
         if ($doc === null) {
-            return false;
+            return null;
         }
 
-        foreach (self::KEEP_TAGS as $tag) {
-            if (str_contains($doc, $tag)) {
-                return true;
-            }
+        $pattern = '#(?:/\*\*|^[ \t]*\*)[ \t]*' . preg_quote($tag, '#') . '\b[ \t]*(.*)$#m';
+
+        if (preg_match($pattern, $doc, $matches) !== 1) {
+            return null;
         }
 
-        return false;
+        return trim(rtrim(trim($matches[1]), '*/'));
+    }
+
+    /**
+     * Does the condition starting at $from call one of the existence guards?
+     * Scans only to the end of the `if (...)` condition.
+     *
+     * @param array<int, array{0: int, 1: string, 2: int}|string> $tokens
+     */
+    private function isExistenceGuard(array $tokens, int $from): bool
+    {
+        return TokenCursor::untilBalanced(
+            $tokens,
+            $from,
+            '(',
+            ')',
+            static fn(array|string $token, int $depth): ?bool => $depth > 0
+                && !is_string($token)
+                && $token[0] === T_STRING
+                && in_array($token[1], self::EXISTENCE_GUARDS, true) ? true : null,
+        ) ?? false;
     }
 
     /**

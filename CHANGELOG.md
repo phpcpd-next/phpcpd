@@ -10,6 +10,154 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.4.0] - 2026-08-23
+
+### Fixed — scanning a cache directory could turn a failing gate green
+
+Measured against a 63k-line project: pointing `--orphans` at the project root scanned
+`.phpstan.cache/` along with everything else, and reported **0 orphaned, exit 0**. The correct answer
+was **21 orphaned, exit 1**.
+
+A static-analysis result cache embeds the fully-qualified name of every class it analysed as a string
+literal, so it satisfied the reference check for 21 symbols that are genuinely unreferenced. It also
+made the run 52× slower and used 21× the memory (4m 0.7s / 1100 MB against 4.6s / 51 MB). The cost
+was visible; the wrong verdict was not, and nothing in the output hinted that a question had gone
+unanswered.
+
+- **Generated and cache trees are now excluded by default** — `vendor`, `node_modules`, `.git`,
+  `.phpstan.cache`, `.phpunit.cache`, `.php-cs-fixer.cache`, `.psalm-cache`, `.rector.cache`,
+  `var/cache`, `storage/framework`, `bootstrap/cache`, `build`, `dist`, `out`, `coverage`.
+  Disable with `--no-default-excludes`.
+- Defaults match whole path **segments**, unlike the substring-based `--exclude`, so a default named
+  `out` prunes `out/` and never `routes/`.
+- A file whose first 2 KB contains `@generated`, `Do not edit`, or `Auto-generated` is skipped
+  wherever it lives.
+- **Every run states its scope** — `Scanned 764 files (3 directories, 15 exclude patterns applied).`
+  A file count wildly out of step with the project is what makes a contaminated run obvious.
+
+### Fixed — the test guard blocked every runner but two
+
+`tests/_guard.php` detected direct execution by asking whether the entry point was *named* `phpunit`
+or `pest`. Every other runner — `paratest`, `infection`, a `phpdbg` run, an IDE run configuration,
+any PHPUnit-compatible runner — was classified as direct execution and killed at `require_once` time,
+before a single test ran. The runner then reported an empty or aborted suite rather than a reason,
+which is the failure mode hardest to read: nothing failed, so nothing looks wrong.
+
+The guard now compares `SCRIPT_FILENAME` with its own caller's path. Direct execution is exactly the
+case where those are the same file, which is checkable without knowing any runner's name — correct
+for every runner that exists and every one that does not exist yet. Same intent, same message. Both
+branches are covered by tests.
+
+### Added — suppression rules for structurally-explained symbols
+
+Every finding in the measured run was a false positive with a structural explanation. Six rules now
+recognise them. Each keys on a *structural* property — a guard statement, a namespace, a manifest
+entry, a fixture path — never a name pattern or a guess about intent:
+
+| Rule | Recognises |
+|------|------------|
+| `conditional` | Declared inside `if (!function_exists('x'))` and friends — a polyfill or shim, by definition declared for an external caller. |
+| `namespace` | Declared outside every `psr-4`/`psr-0` prefix the project's `composer.json` declares. |
+| `manifest` | An `autoload.files` entry point, or an FQN under `extra` (Laravel providers/aliases). |
+| `config` | Named in a `.neon`, `.yaml`, `.yml`, `.xml`, or `.dist` file. |
+| `fixtures` | Under a `Fixtures`/`Stubs` directory inside a test tree. |
+| `keep` / `entrypoint` / `planned` | Docblock tags and framework attributes (previously silent). |
+
+**A suppressed symbol is never dropped.** It moves to its own counted tier, always printed as a
+census by rule and listed in full with `--explain`. A rule that starts over-firing therefore shows up
+as a number that moved — a silent suppression would quietly turn a real orphan into no output at all,
+which is the same failure shape as the cache-directory bug above.
+
+`composer.json` is now read as a set of reference roots: `bin` entry points (conventionally
+extensionless, so a `.php` suffix filter never saw the one file where top-level wiring lives) are
+added to the scan, and a file with no recognised suffix is accepted when its `#!` line names php.
+
+### Added — `@phpcpd-planned`, and reasons on tags
+
+`@phpcpd-keep` asserts *this symbol is reachable, you just can't see it*. That is false for code
+written ahead of the work that will wire it, and marking such code with a keep tag means nothing
+prompts its removal later. `@phpcpd-planned` makes the opposite claim, and its symbols are reported
+as their own group — a staged-work inventory derived from the source rather than from a tracker.
+
+A `@phpcpd-planned` symbol that later becomes referenced is reported as a possible finding: the tag
+has served its purpose and should be deleted. `@phpcpd-keep` can never give that prompt.
+
+Both tags take a free-text reason, printed next to the symbol, so a suppression whose stated reason
+has gone stale becomes reviewable.
+
+### Added — clone suppression
+
+There was previously **no way to declare a duplication intentional**; the only remedy was `--exclude`
+on the whole file, which also hid the duplication worth fixing.
+
+```php
+// phpcpd-ignore-start ... // phpcpd-ignore-end
+/** @phpcpd-ignore-clone Dispatch table — one arm per block type, by design. */
+$x = $y; // phpcpd-ignore-line
+```
+
+A clone is dropped when any of its copies intersects a suppressed range. Markers are read only from
+files that took part in a clone, so an unmarked codebase pays nothing.
+
+### Added — `phpcpd.ini`
+
+Per-project settings whose keys **are the long option names**, so there is no second vocabulary and
+an option is configurable the day it ships. The file is found from the paths being scanned rather
+than from the working directory, so `phpcpd ../other-project/src` picks up that project's settings.
+
+Layered, each overriding the last: built-in defaults → `~/.config/phpcpd/phpcpd.ini` → project
+`phpcpd.ini` → command line. Single-valued keys are replaced by the closer layer; repeatable ones
+(`exclude`, `suffix`) append. `--config <file>` names one explicitly; `--no-config` ignores them all.
+Unknown keys and invalid values are rejected by name, exactly as the equivalent flag would be.
+
+### Added — `--show-config`
+
+Layering is only trustworthy if it can be inspected, and a setting no file mentions keeps a built-in
+default that appears in no file at all. `--show-config` prints every setting in force and names the
+layer that produced it, marking fallbacks with `(*)`. A repeatable setting names every layer that
+contributed, since those append rather than replace.
+
+### Fixed — the default run and `--orphans` could disagree about reachability
+
+Composer `bin` entry points were added to the scan in `--orphans` mode but not in the default run, so
+a class instantiated only from an extensionless console entry point could appear in the default run's
+advisory and not under `--orphans`. Entry points are now resolved once, for both modes.
+
+### Added — findings grouped by cause, with evidence
+
+The report repeated one of two sentences across every entry, so a reader had to re-derive each one by
+hand. Findings are now grouped by cause, which makes the group worth reading — the symbols nothing
+explains — visible instead of buried. A string-literal demotion cites **where** the name appears:
+
+```text
+→ never referenced in code; name appears in a string literal (possible dynamic use)
+  ⤷ name appears at src/Support/Registry.php:23
+```
+
+### Added — `--fail-on`, `--no-suppress`, `--explain`
+
+Rather than a flag per feature, three knobs named after what the report prints:
+
+- `--no-suppress=<rules>` turns rules off by name (or `all`). A disabled rule's symbols are judged
+  normally rather than skipped, which is what makes it a way to audit the rule itself.
+- `--fail-on=<tiers>` chooses what gates CI; `dead` alone by default. `--fail-on=dead,planned` makes
+  shipping staged, unwired components a conscious decision.
+- `--explain` lists suppressed symbols instead of only counting them.
+
+### Fixed — docblock tag matching was substring-based
+
+`str_contains($doc, '@api')` fired on prose: `Unlike @api classes, this one is internal` silently
+suppressed a real finding. Tags must now start a docblock line.
+
+### Changed
+
+- `OrphanResult` gained `suppressed()`, `planned()`, `tier()`, `entries()` and `fails()`.
+  `all()`, `definite()`, `possible()`, `count()` and `isEmpty()` speak only about findings, so a scan
+  that suppresses everything still reads as "no orphans".
+- `Orphans::detect()` accepts `noSuppress`, `failOn` and `defaultExcludes`.
+- `Symbol` replaces `$suppressed`/`$entrypoint` with `$rule`/`$ruleReason`; `Orphan` gained `$rule`
+  and `$evidence`.
+
 ## [1.3.0] - 2026-08-18
 
 ### Fixed — orphan detection: block-structure tracking and aliased imports
@@ -269,6 +417,7 @@ First release of **phpcpd-next**. Picks up where Sebastian Bergmann's archived
 - **`.editorconfig`** — consistent whitespace before any tool runs.
 - **Composer scripts** — `lint`, `lint:fix`, `analyse`, `test`, `check`.
 
+[1.4.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.4
 [1.3.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.3
 [1.2.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.2
 [1.1.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.1

@@ -1,0 +1,4 @@
+services:
+    -
+        class: Demo\App\Support\NeonWired
+        tags: [phpstan.rules.rule]

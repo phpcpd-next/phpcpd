@@ -13,6 +13,8 @@ declare(strict_types=1);
 namespace LucianoPereira\PhpcpdNext;
 
 use function array_filter;
+
+use function implode;
 use function max;
 use function sprintf;
 use function str_pad;
@@ -20,6 +22,8 @@ use function strlen;
 use function trim;
 
 use const PHP_EOL;
+
+use LucianoPereira\PhpcpdNext\Orphan\Rule;
 
 /**
  * The phpcpd-next option set — declared once. Both ArgumentsBuilder (parsing) and
@@ -57,8 +61,37 @@ final class Options
                 group: 'Options for selecting files',
             ),
             new OptionDefinition(
+                name: 'no-default-excludes',
+                description: 'Scan generated and cache trees too (vendor, node_modules, .phpstan.cache, build, ...), which are skipped by default',
+                group: 'Options for selecting files',
+            ),
+            new OptionDefinition(
                 name: 'orphans',
                 description: 'Detect orphaned symbols (unreferenced classes, interfaces, traits, enums, functions) instead of clones',
+                group: 'Orphan detection (dead code)',
+            ),
+            new OptionDefinition(
+                name: 'no-suppress',
+                takesValue: true,
+                repeatable: true,
+                allowedValues: [...Rule::names(), 'all'],
+                valuePlaceholder: '<rules>',
+                description: 'Turn off suppression rules by name, comma-separated, or "all" (' . implode(', ', Rule::names()) . ')',
+                group: 'Orphan detection (dead code)',
+                listValue: true,
+            ),
+            new OptionDefinition(
+                name: 'fail-on',
+                takesValue: true,
+                allowedValues: ['dead', 'possible', 'planned', 'suppressed'],
+                valuePlaceholder: '<tiers>',
+                description: 'Result tiers that make the run exit non-zero, comma-separated (default: dead)',
+                group: 'Orphan detection (dead code)',
+                listValue: true,
+            ),
+            new OptionDefinition(
+                name: 'explain',
+                description: 'List every suppressed symbol and the rule that suppressed it, instead of only counting them',
                 group: 'Orphan detection (dead code)',
             ),
             new OptionDefinition(
@@ -168,6 +201,23 @@ final class Options
                 name: 'incremental',
                 description: 'Per-file incremental index: re-tokenize only changed files (rabin-karp only; uses the cache directory)',
                 group: 'Options for CI integration',
+            ),
+            new OptionDefinition(
+                name: 'config',
+                takesValue: true,
+                valuePlaceholder: '<file>',
+                description: 'Read settings from <file> (default: ./phpcpd.ini when present); keys are the long option names',
+                group: 'General options',
+            ),
+            new OptionDefinition(
+                name: 'show-config',
+                description: 'Print the settings in force, where each came from, and exit',
+                group: 'General options',
+            ),
+            new OptionDefinition(
+                name: 'no-config',
+                description: 'Ignore ./phpcpd.ini',
+                group: 'General options',
             ),
             new OptionDefinition(
                 name: 'help',

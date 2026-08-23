@@ -1838,6 +1838,257 @@ index on large corpora). Both are size/IO optimizations, not correctness gaps.
 
 ---
 
+## 44. `src/Util/FileFinder.php` — default excludes, because a cache directory is adversarial input
+
+Measured on a 63k-line project: pointing `--orphans` at the project root reported **0 orphaned, exit
+0**. The correct answer was **21 orphaned, exit 1**. The only difference between the wrong run and
+the right one was `--exclude .phpstan.cache`.
+
+A static-analysis result cache embeds the fully-qualified name of every class it analysed as a
+**string literal**. The orphan scan's reference check is satisfied by exactly that, so 2944 files of
+machine-generated PHP silently vouched for 21 symbols nothing in the source references. The run also
+took 4m 0.7s instead of 4.6s and 1100 MB instead of 51 MB — but the cost was visible and the wrong
+verdict was not.
+
+This is the failure mode worth naming: **a confident answer with no signal that a question went
+unanswered.** Cost is a nuisance; a green gate that is green for the wrong reason is a defect.
+
+```diff
++    private const array DEFAULT_EXCLUDED_DIRS = [
++        'vendor', 'node_modules', '.git',
++        '.phpstan.cache', '.phpunit.cache', '.php-cs-fixer.cache', '.psalm-cache', '.rector.cache',
++        'build', 'dist', 'out', 'coverage',
++    ];
++
++    private const array DEFAULT_EXCLUDED_PATHS = ['var/cache', 'storage/framework', 'bootstrap/cache'];
+
+-    public function find(array $directories, array $suffixes, array $excludes): array
++    public function find(array $directories, array $suffixes, array $excludes, bool $defaultExcludes = true): array
+```
+
+**Segments, not substrings — and this is not a detail.** The pre-existing `--exclude` is
+`str_contains($path, $exclude)`. Shipping `out` and `dist` with those semantics would silently drop
+`routes/`, `layouts/`, and anything else merely containing the letters. Defaults therefore get their
+own matcher, comparing whole path segments, while `--exclude` keeps its documented behaviour:
+
+```diff
++    private function isDefaultExcludedDir(string $path, string $name): bool
++    {
++        if (in_array($name, self::DEFAULT_EXCLUDED_DIRS, true)) {
++            return true;
++        }
+```
+
+Two smaller additions in the same file. A file whose first 2 KB contains `@generated`, `Do not edit`,
+or `Auto-generated` is skipped wherever it lives (generated code in unconventional locations). And an
+**extensionless** file is scanned when its `#!` line names php — console entry points are
+conventionally extensionless (`artisan`, `bin/console`), so a `--suffix .php` filter never saw the one
+file where an application's top-level wiring lives.
+
+Finally, `Application` states the scope of every run:
+
+```
+Scanned 764 files (3 directories, 15 exclude patterns applied).
+```
+
+3708 files in a project with 704 source and test files does not pass the sniff test — but only if it
+is printed. Silence about scope is what let a 52× cost and a wrong verdict go unnoticed.
+
+Disable the whole set with `--no-default-excludes`. Tests: `tests/FileFinderDefaultsTest.php` (7),
+including the `routes/` case that proves segment matching.
+
+---
+
+## 45. `tests/_guard.php` — a runner allowlist that blocked every runner but two
+
+The guard exists to catch `php tests/SomeTest.php` and say "this is a test class, not a script". Its
+intent was right; its implementation asked a different question:
+
+```php
+$runner = basename((string) ($_SERVER['argv'][0] ?? ''));
+
+if (!str_contains($runner, 'phpunit') && !str_contains($runner, 'pest')) {
+```
+
+"Was this file executed directly?" was answered with "is the entry point *named* phpunit or pest?" —
+a two-entry allowlist of runner filenames. Every other runner (`paratest`, `infection`, a `phpdbg`
+run, an IDE run configuration, any future runner) was classified as direct execution and killed at
+`require_once` time in the first test file loaded, **before a single test ran**. The runner then
+reported an empty or aborted suite rather than a reason.
+
+That is the same shape as §44: nothing failed, so nothing looked wrong.
+
+The guard already had the exact information it needed. `SCRIPT_FILENAME` is the file PHP was asked to
+execute; the guard's caller is the file that included it. Direct execution is precisely the case where
+those are the same file — checkable without knowing any runner's name:
+
+```diff
+-$runner = basename((string) ($_SERVER['argv'][0] ?? ''));
+-
+-if (!str_contains($runner, 'phpunit') && !str_contains($runner, 'pest')) {
++$invoked = $_SERVER['SCRIPT_FILENAME'] ?? '';
++$caller  = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 1)[0]['file'] ?? __FILE__;
++
++$invoked = is_string($invoked) ? realpath($invoked) : false;
++$caller  = is_string($caller) ? realpath($caller) : false;
++
++if ($invoked !== false && $invoked === $caller) {
+```
+
+Correct for every runner that exists and every one that does not exist yet, and exact rather than
+heuristic — `str_contains($runner, 'pest')` also matches a binary called `pestle` or `tempest`. Same
+intent, same message. Tests: `tests/GuardTest.php`, one per branch — a direct invocation still exits 1
+with the explanation, and a runner named neither `phpunit` nor `pest` starts the suite.
+
+---
+
+## 46. Orphan suppression — structural rules, and why suppressed must not mean hidden
+
+Every one of the 34 findings in the §44 measurement was a false positive with a *structural*
+explanation. The report had no way to express **why** each was fine, so a reader re-derived all 34 by
+hand every run.
+
+Six rules now recognise them, each registered once in `src/Orphan/Rule.php`. The rule name is
+simultaneously the `--no-suppress` value, the report heading, and the machine-readable cause on an
+`Orphan` — one string doing three jobs, so what a reader sees is exactly what they type to switch it
+off, and a seventh rule costs no new CLI flag.
+
+| Rule | Recognises | New collaborator |
+|------|------------|------------------|
+| `conditional` | `if (!function_exists('x'))` and friends | `SymbolCollector::isExistenceGuard()` |
+| `namespace` | outside every declared psr-4/psr-0 prefix | `ComposerManifest::owns()` |
+| `manifest` | `autoload.files`, `bin`, FQNs under `extra` | `ComposerManifest` |
+| `config` | named in `.neon` / `.yaml` / `.yml` / `.xml` / `.dist` | `FqnScanner`, `ProjectContext` |
+| `fixtures` | a `Fixtures`/`Stubs` segment inside a test tree | `OrphanDetector::isFixturePath()` |
+| `keep` / `entrypoint` / `planned` | docblock tags and framework attributes | `SymbolCollector::ruleFor()` |
+
+**The design decision that matters: a suppressed symbol is never dropped.** It moves to its own
+counted tier, printed as a census by rule and listed in full under `--explain`:
+
+```
+Suppressed (30): conditional 12 · fixtures 9 · config 8 · namespace 1
+  → --explain to list them
+```
+
+Silently removing 30 symbols would have reproduced §44 exactly one level down — a rule that starts
+over-firing would turn a real orphan into no output at all, with nothing to notice. Counting them in
+the open means a misfire shows up as a number that moved. `--no-suppress=<rule>` then makes the rule
+*auditable*: a disabled rule's symbols are judged normally rather than skipped.
+
+**Path-shaped rules judge paths relative to the scan roots, never absolutely.** Aiming a scan at one
+subtree is a statement that the subtree is the world for that run, so its files are ordinary code
+rather than "files sitting inside someone else's project". Without this, pointing phpcpd at a fixture
+directory would suppress exactly what it was asked about — and this project's own orphan fixtures live
+under `tests/fixtures/`. The same principle gates the manifest rules via
+`ProjectContext::coversProject()`.
+
+```diff
+-        public ?string $entrypoint = null,
+-        public bool $suppressed = false,
++        public ?string $rule = null,
++        public ?string $ruleReason = null,
+```
+
+Two further fixes in `SymbolCollector`. Tag matching was `str_contains($doc, '@api')`, which fires on
+prose — `Unlike @api classes, this one is internal` silently suppressed a real finding; tags must now
+start a docblock line. And both `@phpcpd-keep` and the new `@phpcpd-planned` capture a free-text
+reason, printed next to the symbol, so a suppression whose stated reason has gone stale is reviewable.
+
+`@phpcpd-planned` is deliberately **not** a synonym for `@phpcpd-keep`: keep asserts *this is
+reachable, you just cannot see it*, which is false for code written ahead of the work that will wire
+it. Planned symbols form their own reported group — a staged-work inventory derived from source rather
+than from a tracker — and one that later *becomes* referenced is reported as a finding, since the tag
+has served its purpose. Keep can never give that prompt.
+
+Tests: `tests/OrphanSuppressionTest.php` (17) against one synthetic project carrying a live example of
+each rule, asserting in every case that the genuinely dead classes survive.
+
+---
+
+## 47. `src/Detector/CloneSuppressions.php` — declaring a duplication intentional
+
+Nothing under `src/Detector/` read any ignore marker, so there was **no way to declare a duplication
+intentional**. Some duplication is correct design: a visitor dispatch table with one `match` arm per
+node type, repeated per renderer, is parallel on purpose, and folding it into a `class => method`
+lookup costs both type safety and the compile-visible `default => throw`. The only remedy was
+`--exclude` on the whole file, which also hid the duplication worth fixing.
+
+Three notations, because a clone is a **range** and frequently corresponds to no single declaration:
+
+```php
+// phpcpd-ignore-start ... // phpcpd-ignore-end
+/** @phpcpd-ignore-clone Dispatch table — one arm per block type, by design. */
+$x = $y; // phpcpd-ignore-line
+```
+
+A clone is dropped when **any** copy intersects a suppressed range — marking one side is a statement
+about the duplication, not about one participant. `CodeCloneMap` derives its totals in `add()`, so a
+filtered map is rebuilt from the survivors rather than mutated:
+
+```diff
+-        $this->strategy->postProcess();
+-
+-        return $result;
++        $this->strategy->postProcess();
++
++        return CloneSuppressions::forFiles($this->filesWithClones($result))->filter($result);
+```
+
+Markers are read only from files that actually took part in a clone — normally a small fraction of a
+scan — so an unmarked codebase pays one extra read per *reported* file, not per scanned file.
+
+**SelfDryTest caught this section's own duplication.** The new marker scanner and
+`SymbolCollector::isExistenceGuard()` are both balanced-bracket token walks, and the dogfood
+invariant flagged 32 shared lines at min-tokens 40. Fixed the way the test intends — by extracting
+`src/Util/TokenCursor::untilBalanced()` and rewriting both call sites onto it — not by relaxing the
+threshold.
+
+Tests: `tests/CloneSuppressionTest.php` (6), one fixture pair per notation, plus an unmarked pair that
+must still be reported — which is what proves a passing marked case is suppression rather than a
+detector that stopped finding anything.
+
+---
+
+## 48. `phpcpd.ini` and `--show-config` — configuration you can inspect
+
+Settings live in a file whose keys **are the long option names**, so there is no second vocabulary to
+learn and an option added to `Options` is configurable the day it ships. The reader converts settings
+into parser options that are prepended to argv, which means the existing option loop supplies the
+precedence rule for free — later values replace a single-valued option and append to a repeatable one.
+
+The file is discovered **from the paths being scanned**, walking up the way `composer.json` is found,
+not from the working directory. `phpcpd ../other-project/src` therefore picks up that project's
+settings rather than the current shell's.
+
+Layered, each overriding the last:
+
+```
+built-in defaults  →  ~/.config/phpcpd/phpcpd.ini  →  project phpcpd.ini  →  command line
+```
+
+Validation is shared rather than duplicated: `OptionDefinition::firstInvalid()` is the single
+authority, so a setting cannot slip past a check the equivalent flag would have failed.
+
+```diff
++    public function firstInvalid(string $value): ?string
+```
+
+**`--show-config` exists for the same reason the suppression census does.** A layered configuration is
+only trustworthy if the layer that produced each value can be named — and a setting no file mentions
+keeps a built-in default that appears in *no* file at all, which is precisely the value a reader
+cannot account for:
+
+```
+  SETTING              VALUE    SOURCE
+  exclude              ignored  project
+  min-tokens           12       command line
+  min-lines            5        (*) default
+```
+
+Tests: `tests/ConfigFileTest.php` (10) and `tests/ConfigReportTest.php` (7).
+
+---
+
 ## Not changed (intentionally deferred)
 
 | What | Why deferred |
@@ -1862,7 +2113,11 @@ index on large corpora). Both are size/IO optimizations, not correctness gaps.
 |-------------|-----|
 | `php: >=8.5` | language baseline |
 | `ext-dom` | PMD-CPD XML output (`DOMDocument` in `AbstractXmlLogger`) |
-| `ext-mbstring` | UTF-8 conversion in `AbstractXmlLogger` |
+| `ext-mbstring` | UTF-8 conversion in `AbstractXmlLogger`; column alignment in `ConfigReport` (`mb_str_pad`) |
+
+`ext-json` is used (`CloneCache`, `AbstractJsonLogger`, `ComposerManifest`) but deliberately **not**
+declared: since PHP 8.0 the JSON extension is always compiled in and can no longer be disabled, so
+with a `php: >=8.5` floor the requirement is already implied.
 
 The four sebastian/phpunit packages that used to be required (`php-file-iterator`, `php-timer`,
 `cli-parser`, `version`) were replaced with owned code or deleted (§40c). They remain installed

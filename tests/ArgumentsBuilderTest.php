@@ -26,7 +26,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function defaults_are_set_when_only_directory_is_given(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', 'src/']);
 
         self::assertSame(['src/'], $args->directories());
         self::assertSame(['.php'], $args->suffixes());
@@ -47,7 +47,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function incremental_flag_enables_the_per_file_index(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--incremental', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--incremental', 'src/']);
 
         self::assertTrue($args->incremental());
     }
@@ -55,7 +55,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function suffix_flag_appends_to_default(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--suffix', '.php5', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--suffix', '.php5', 'src/']);
 
         self::assertSame(['.php', '.php5'], $args->suffixes());
     }
@@ -63,7 +63,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function suffix_flag_can_be_given_multiple_times(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--suffix', '.php5', '--suffix', '.php7', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--suffix', '.php5', '--suffix', '.php7', 'src/']);
 
         self::assertSame(['.php', '.php5', '.php7'], $args->suffixes());
     }
@@ -71,7 +71,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function exclude_flag_is_collected(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--exclude', 'vendor', '--exclude', 'tests', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--exclude', 'vendor', '--exclude', 'tests', 'src/']);
 
         self::assertSame(['vendor', 'tests'], $args->exclude());
     }
@@ -79,7 +79,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function min_lines_flag_overrides_default(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--min-lines', '10', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--min-lines', '10', 'src/']);
 
         self::assertSame(10, $args->linesThreshold());
     }
@@ -87,7 +87,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function min_tokens_flag_overrides_default(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--min-tokens', '100', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--min-tokens', '100', 'src/']);
 
         self::assertSame(100, $args->tokensThreshold());
     }
@@ -95,7 +95,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function fuzzy_flag_enables_fuzzy_mode(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--fuzzy', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--fuzzy', 'src/']);
 
         self::assertTrue($args->fuzzy());
     }
@@ -103,7 +103,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function verbose_flag_enables_verbose_mode(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--verbose', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--verbose', 'src/']);
 
         self::assertTrue($args->verbose());
     }
@@ -111,7 +111,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function log_pmd_flag_sets_output_path(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--log-pmd', '/tmp/report.xml', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--log-pmd', '/tmp/report.xml', 'src/']);
 
         self::assertSame('/tmp/report.xml', $args->pmdCpdXmlLogfile());
     }
@@ -119,7 +119,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function log_json_flag_sets_output_path(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--log-json', '/tmp/report.json', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--log-json', '/tmp/report.json', 'src/']);
 
         self::assertSame('/tmp/report.json', $args->jsonLogfile());
     }
@@ -127,7 +127,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function log_sarif_flag_sets_output_path(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--log-sarif', '/tmp/report.sarif', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--log-sarif', '/tmp/report.sarif', 'src/']);
 
         self::assertSame('/tmp/report.sarif', $args->sarifLogfile());
     }
@@ -135,7 +135,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function report_logfiles_default_to_null_when_not_requested(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', 'src/']);
 
         self::assertNull($args->pmdCpdXmlLogfile());
         self::assertNull($args->jsonLogfile());
@@ -145,7 +145,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function algorithm_flag_overrides_default(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--algorithm', 'suffixtree', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--algorithm', 'suffixtree', 'src/']);
 
         self::assertSame('suffixtree', $args->algorithm());
     }
@@ -153,7 +153,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function edit_distance_flag_overrides_default(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--edit-distance', '3', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--edit-distance', '3', 'src/']);
 
         self::assertSame(3, $args->editDistance());
     }
@@ -161,7 +161,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function head_equality_flag_overrides_default(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--head-equality', '5', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--head-equality', '5', 'src/']);
 
         self::assertSame(5, $args->headEquality());
     }
@@ -169,7 +169,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function help_flag_does_not_require_a_directory(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--help']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--help']);
 
         self::assertTrue($args->help());
     }
@@ -177,7 +177,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function version_flag_does_not_require_a_directory(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--version']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--version']);
 
         self::assertTrue($args->version());
     }
@@ -185,7 +185,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function short_h_flag_sets_help(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '-h']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '-h']);
 
         self::assertTrue($args->help());
     }
@@ -193,7 +193,7 @@ final class ArgumentsBuilderTest extends TestCase
     #[Test]
     public function short_v_flag_sets_version(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '-v']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '-v']);
 
         self::assertTrue($args->version());
     }
@@ -204,7 +204,7 @@ final class ArgumentsBuilderTest extends TestCase
         $this->expectException(ArgumentsBuilderException::class);
         $this->expectExceptionMessage('No directory specified');
 
-        (new ArgumentsBuilder())->build(['phpcpd']);
+        (new ArgumentsBuilder())->build(['phpcpd', '--no-config']);
     }
 
     #[Test]
@@ -212,7 +212,7 @@ final class ArgumentsBuilderTest extends TestCase
     {
         $this->expectException(ArgumentsBuilderException::class);
 
-        (new ArgumentsBuilder())->build(['phpcpd', '--no-such-flag', 'src/']);
+        (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--no-such-flag', 'src/']);
     }
 
     #[Test]
@@ -223,13 +223,13 @@ final class ArgumentsBuilderTest extends TestCase
         $this->expectException(ArgumentsBuilderException::class);
         $this->expectExceptionMessage('Invalid value "nonsense" for --algorithm');
 
-        (new ArgumentsBuilder())->build(['phpcpd', '--algorithm', 'nonsense', 'src/']);
+        (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--algorithm', 'nonsense', 'src/']);
     }
 
     #[Test]
     public function option_value_can_be_given_with_equals_sign(): void
     {
-        $args = (new ArgumentsBuilder())->build(['phpcpd', '--min-tokens=123', 'src/']);
+        $args = (new ArgumentsBuilder())->build(['phpcpd', '--no-config', '--min-tokens=123', 'src/']);
 
         self::assertSame(123, $args->tokensThreshold());
     }
@@ -240,6 +240,6 @@ final class ArgumentsBuilderTest extends TestCase
         $this->expectException(ArgumentsBuilderException::class);
         $this->expectExceptionMessage('requires a value');
 
-        (new ArgumentsBuilder())->build(['phpcpd', 'src/', '--min-tokens']);
+        (new ArgumentsBuilder())->build(['phpcpd', '--no-config', 'src/', '--min-tokens']);
     }
 }

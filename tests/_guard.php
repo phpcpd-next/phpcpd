@@ -16,7 +16,8 @@ declare(strict_types=1);
  * PHPUnit test classes are not standalone scripts. This guard loads the
  * Composer autoloader (so class definitions succeed) then exits with a
  * helpful message when a file is run via `php tests/SomeTest.php` instead
- * of through the PHPUnit runner.
+ * of through a test runner. It never asks what the runner is called, so any
+ * PHPUnit-compatible runner can execute this suite.
  *
  * Because require_once tracks by path, this file is executed only once
  * per process even though every test file includes it.
@@ -28,10 +29,17 @@ if (file_exists($autoload) && !class_exists(\PHPUnit\Framework\TestCase::class))
     require_once $autoload;
 }
 
-// Detect direct invocation: argv[0] is the test file, not the PHPUnit binary.
-$runner = basename((string) ($_SERVER['argv'][0] ?? ''));
+// Direct invocation is exactly the case where the file PHP was asked to run is
+// the same file that included this guard. Asking that question by path identity
+// keeps the guard correct for every runner, including ones that do not exist
+// yet — a runner-name allowlist silently kills all the others.
+$invoked = $_SERVER['SCRIPT_FILENAME'] ?? '';
+$caller  = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 1)[0]['file'] ?? __FILE__;
 
-if (!str_contains($runner, 'phpunit') && !str_contains($runner, 'pest')) {
+$invoked = is_string($invoked) ? realpath($invoked) : false;
+$caller  = is_string($caller) ? realpath($caller) : false;
+
+if ($invoked !== false && $invoked === $caller) {
     $testFile = basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? 'the test file'));
     fwrite(STDERR, sprintf(
         'This is a PHPUnit test class, not a standalone script.%1$s' .

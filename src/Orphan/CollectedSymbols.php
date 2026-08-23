@@ -19,16 +19,18 @@ namespace LucianoPereira\PhpcpdNext\Orphan;
  *   - $definitions  every top-level type/function declaration found.
  *   - $references   short name → how many times it is *used* in code (not in the
  *                   declaration itself, not in comments). Zero means orphan.
- *   - $stringNames  short/qualified names that appear inside string literals —
- *                   the weak signal that a name might be reached dynamically
- *                   (`new $class`, a DI service id, a config array).
+ *   - $stringNames  short/qualified name => "file:line" of the first string
+ *                   literal containing it. The weak signal that a name might be
+ *                   reached dynamically (`new $class`, a DI service id, a config
+ *                   array) — and the location, so a demotion can be verified at
+ *                   a glance instead of costing the reader a grep.
  */
 final readonly class CollectedSymbols
 {
     /**
      * @param list<Symbol>          $definitions
      * @param array<string, int>    $references
-     * @param array<string, bool>   $stringNames
+     * @param array<string, string> $stringNames
      */
     public function __construct(
         public array $definitions,

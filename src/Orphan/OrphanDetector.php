@@ -12,7 +12,21 @@ declare(strict_types=1);
 
 namespace LucianoPereira\PhpcpdNext\Orphan;
 
+use function array_filter;
+use function array_slice;
+use function array_values;
 use function count;
+use function dirname;
+use function explode;
+use function implode;
+use function in_array;
+use function realpath;
+use function str_starts_with;
+use function strlen;
+use function strrpos;
+use function strtolower;
+use function substr;
+use function trim;
 
 use LucianoPereira\PhpcpdNext\CodeCloneMap;
 
@@ -41,6 +55,22 @@ use LucianoPereira\PhpcpdNext\CodeCloneMap;
  */
 final class OrphanDetector
 {
+    /**
+     * Path segments that mark test support code. Being unreferenced is what makes
+     * a fixture a fixture — one referenced by ordinary code would be a poor one.
+     *
+     * @var list<string>
+     */
+    private const array FIXTURE_SEGMENTS = ['fixtures', 'fixture', 'stubs', 'stub'];
+
+    /**
+     * A fixture segment only counts inside a test tree, so a production
+     * directory that happens to be called Stubs is not silently exempted.
+     *
+     * @var list<string>
+     */
+    private const array TEST_SEGMENTS = ['test', 'tests', 'spec', 'specs'];
+
     public function __construct(
         private readonly SymbolCollector $collector = new SymbolCollector(),
     ) {}
@@ -52,25 +82,37 @@ final class OrphanDetector
      *                               annotated as superseded copies. Optional —
      *                               null just skips that enrichment.
      */
-    public function detect(array $files, ?CodeCloneMap $clones = null): OrphanResult
-    {
+    public function detect(
+        array $files,
+        ?CodeCloneMap $clones = null,
+        ?OrphanConfiguration $config = null,
+        ?ProjectContext $context = null,
+    ): OrphanResult {
+        $config    = $config ?? new OrphanConfiguration();
+        $context   = $context ?? new ProjectContext();
         $collected = $this->collector->collect($files);
+        $roots     = $this->rootsFor($files, $config);
 
         // First pass: which symbols are orphaned, and why (base reason/tier).
-        /** @var list<array{symbol: Symbol, confidence: string, reason: string}> $provisional */
+        /** @var list<array{symbol: Symbol, confidence: string, reason: string, rule: ?string, evidence: ?string}> $provisional */
         $provisional = [];
 
         foreach ($collected->definitions as $symbol) {
-            $verdict = $this->classify($symbol, $collected);
+            $verdict = $this->classify($symbol, $collected, $config, $context, $roots);
 
             if ($verdict !== null) {
                 $provisional[] = $verdict;
             }
         }
 
+        $findings       = array_values(array_filter(
+            $provisional,
+            static fn(array $v): bool => $v['confidence'] === Orphan::CONFIDENCE_DEAD
+                || $v['confidence'] === Orphan::CONFIDENCE_POSSIBLE,
+        ));
         $perFileTotal   = $this->countByFile($collected->definitions);
-        $perFileOrphans = $this->countByFile($this->symbolsOf($provisional));
-        $duplicateOf    = $this->duplicateTargets($provisional, $collected->definitions, $clones);
+        $perFileOrphans = $this->countByFile($this->symbolsOf($findings));
+        $duplicateOf    = $this->duplicateTargets($findings, $collected->definitions, $clones);
 
         $orphans = [];
 
@@ -82,8 +124,12 @@ final class OrphanDetector
                 $symbol,
                 $verdict['confidence'],
                 $verdict['reason'],
-                entireFileOrphaned: ($perFileOrphans[$symbol->file] ?? 0) === ($perFileTotal[$symbol->file] ?? 0),
+                entireFileOrphaned: $verdict['confidence'] !== Orphan::CONFIDENCE_SUPPRESSED
+                    && $verdict['confidence'] !== Orphan::CONFIDENCE_PLANNED
+                    && ($perFileOrphans[$symbol->file] ?? 0) === ($perFileTotal[$symbol->file] ?? 0),
                 duplicateOf: $duplicateOf[$key] ?? null,
+                rule: $verdict['rule'],
+                evidence: $verdict['evidence'],
             );
         }
 
@@ -91,43 +137,236 @@ final class OrphanDetector
     }
 
     /**
-     * @return array{symbol: Symbol, confidence: string, reason: string}|null
+     * The decision tree. Order matters: a code reference settles the question
+     * outright, an author-stated intent outranks a structural rule, and the two
+     * "possible" hedges come last so a stronger explanation always wins.
+     *
+     * A disabled rule falls through to ordinary classification rather than being
+     * skipped — turning a rule off means "judge these symbols normally", which is
+     * what makes --no-suppress a way to audit the rule itself.
+     *
+     * @param list<string> $roots
+     * @return array{symbol: Symbol, confidence: string, reason: string, rule: ?string, evidence: ?string}|null
      */
-    private function classify(Symbol $symbol, CollectedSymbols $collected): ?array
-    {
-        if ($symbol->suppressed || $symbol->entrypoint !== null) {
+    private function classify(
+        Symbol $symbol,
+        CollectedSymbols $collected,
+        OrphanConfiguration $config,
+        ProjectContext $context,
+        array $roots,
+    ): ?array {
+        if (($collected->references[$symbol->name] ?? 0) > 0) {
+            // A planned symbol that became referenced has outlived its tag. This
+            // is the cleanup prompt a keep tag can never give.
+            if ($symbol->rule === Rule::PLANNED && $config->ruleEnabled(Rule::PLANNED)) {
+                return $this->verdict(
+                    $symbol,
+                    Orphan::CONFIDENCE_POSSIBLE,
+                    'referenced now — @phpcpd-planned has served its purpose and can be removed',
+                    Rule::PLANNED,
+                );
+            }
+
             return null;
         }
 
-        if (($collected->references[$symbol->name] ?? 0) > 0) {
-            return null;
+        if ($symbol->rule !== null && $config->ruleEnabled($symbol->rule)) {
+            return $this->verdict(
+                $symbol,
+                $symbol->rule === Rule::PLANNED ? Orphan::CONFIDENCE_PLANNED : Orphan::CONFIDENCE_SUPPRESSED,
+                $symbol->ruleReason ?? Rule::label($symbol->rule),
+                $symbol->rule,
+            );
+        }
+
+        if ($config->ruleEnabled(Rule::MANIFEST) && $context->isEntryPointFile($symbol->file)) {
+            return $this->verdict(
+                $symbol,
+                Orphan::CONFIDENCE_SUPPRESSED,
+                'declared in a composer autoload.files entry point',
+                Rule::MANIFEST,
+                'composer.json',
+            );
+        }
+
+        $namespace = $this->namespaceOf($symbol);
+
+        if ($namespace !== '' && $config->ruleEnabled(Rule::NAMESPACE_PREFIX) && !$context->ownsNamespace($namespace)) {
+            return $this->verdict(
+                $symbol,
+                Orphan::CONFIDENCE_SUPPRESSED,
+                "declared outside the project's own namespaces (compatibility shim)",
+                Rule::NAMESPACE_PREFIX,
+            );
+        }
+
+        if ($config->ruleEnabled(Rule::FIXTURES) && $this->isFixturePath($symbol->file, $roots)) {
+            return $this->verdict(
+                $symbol,
+                Orphan::CONFIDENCE_SUPPRESSED,
+                'test fixture — loaded by path or named as a string, never referenced',
+                Rule::FIXTURES,
+            );
+        }
+
+        foreach ([[Rule::MANIFEST, $context->manifestNames], [Rule::CONFIG, $context->configNames]] as [$rule, $names]) {
+            $where = $names[$symbol->fqn] ?? $names[$symbol->name] ?? null;
+
+            if ($where !== null && $config->ruleEnabled($rule)) {
+                return $this->verdict($symbol, Orphan::CONFIDENCE_SUPPRESSED, Rule::label($rule), $rule, $where);
+            }
         }
 
         if ($symbol->isContract()) {
-            return [
-                'symbol'     => $symbol,
-                'confidence' => Orphan::CONFIDENCE_POSSIBLE,
-                'reason'     => match ($symbol->kind) {
-                    Symbol::KIND_INTERFACE => 'never referenced (interface — may be implemented outside the scanned set)',
-                    Symbol::KIND_TRAIT     => 'never referenced (trait — may be used by classes outside the scanned set)',
-                    default                => 'never referenced (abstract — may be extended outside the scanned set)',
-                },
-            ];
+            return $this->verdict($symbol, Orphan::CONFIDENCE_POSSIBLE, match ($symbol->kind) {
+                Symbol::KIND_INTERFACE => 'never referenced (interface — may be implemented outside the scanned set)',
+                Symbol::KIND_TRAIT     => 'never referenced (trait — may be used by classes outside the scanned set)',
+                default                => 'never referenced (abstract — may be extended outside the scanned set)',
+            });
         }
 
-        if (isset($collected->stringNames[$symbol->name]) || isset($collected->stringNames[$symbol->fqn])) {
-            return [
-                'symbol'     => $symbol,
-                'confidence' => Orphan::CONFIDENCE_POSSIBLE,
-                'reason'     => 'never referenced in code; name appears in a string literal (possible dynamic use)',
-            ];
+        $inString = $collected->stringNames[$symbol->fqn] ?? $collected->stringNames[$symbol->name] ?? null;
+
+        if ($inString !== null) {
+            return $this->verdict(
+                $symbol,
+                Orphan::CONFIDENCE_POSSIBLE,
+                'never referenced in code; name appears in a string literal (possible dynamic use)',
+                null,
+                $inString,
+            );
         }
 
+        return $this->verdict($symbol, Orphan::CONFIDENCE_DEAD, 'never referenced');
+    }
+
+    /**
+     * @return array{symbol: Symbol, confidence: string, reason: string, rule: ?string, evidence: ?string}
+     */
+    private function verdict(
+        Symbol $symbol,
+        string $confidence,
+        string $reason,
+        ?string $rule = null,
+        ?string $evidence = null,
+    ): array {
         return [
             'symbol'     => $symbol,
-            'confidence' => Orphan::CONFIDENCE_DEAD,
-            'reason'     => 'never referenced',
+            'confidence' => $confidence,
+            'reason'     => $reason,
+            'rule'       => $rule,
+            'evidence'   => $evidence,
         ];
+    }
+
+    /**
+     * The directories this scan treats as the project. Explicit roots win; with
+     * none, the deepest directory containing every scanned file stands in, so a
+     * caller that hands over a bare file list still gets path rules judged
+     * against that file set rather than against the machine's directory layout.
+     *
+     * @param list<string> $files
+     * @return list<string>
+     */
+    private function rootsFor(array $files, OrphanConfiguration $config): array
+    {
+        if ($config->roots !== []) {
+            return $config->roots;
+        }
+
+        $common = null;
+
+        foreach ($files as $file) {
+            $parts = explode('/', dirname($file));
+
+            if ($common === null) {
+                $common = $parts;
+
+                continue;
+            }
+
+            $shared = [];
+
+            foreach ($parts as $depth => $part) {
+                if (($common[$depth] ?? null) !== $part) {
+                    break;
+                }
+
+                $shared[] = $part;
+            }
+
+            $common = $shared;
+        }
+
+        return $common === null || $common === [] ? [] : [implode('/', $common)];
+    }
+
+    /**
+     * Is $file test support code, judged RELATIVE to the scan roots? An absolute
+     * path is the wrong thing to test: pointing a scan straight at a fixture
+     * directory makes that directory the project for this run, and its contents
+     * ordinary code. Judging the absolute path instead would make such a scan
+     * suppress everything it was explicitly asked about.
+     *
+     * @param list<string> $roots
+     */
+    private function isFixturePath(string $file, array $roots): bool
+    {
+        $segments = $this->relativeSegments($file, $roots);
+
+        if ($segments === null) {
+            return false;
+        }
+
+        $fixture = false;
+        $test    = false;
+
+        foreach ($segments as $segment) {
+            $bare = trim(strtolower($segment), '_');
+
+            $fixture = $fixture || in_array($bare, self::FIXTURE_SEGMENTS, true);
+            $test    = $test || in_array($bare, self::TEST_SEGMENTS, true);
+        }
+
+        return $fixture && $test;
+    }
+
+    /**
+     * $file's directory segments below whichever root contains it, or null when
+     * no root does.
+     *
+     * @param list<string> $roots
+     * @return ?list<string>
+     */
+    private function relativeSegments(string $file, array $roots): ?array
+    {
+        $path = realpath($file);
+
+        if ($path === false) {
+            return null;
+        }
+
+        foreach ($roots as $root) {
+            $base = realpath($root);
+
+            if ($base === false || !str_starts_with($path, $base . '/')) {
+                continue;
+            }
+
+            $relative = substr($path, strlen($base) + 1);
+            $segments = explode('/', $relative);
+
+            return array_slice($segments, 0, count($segments) - 1);
+        }
+
+        return null;
+    }
+
+    private function namespaceOf(Symbol $symbol): string
+    {
+        $pos = strrpos($symbol->fqn, '\\');
+
+        return $pos === false ? '' : substr($symbol->fqn, 0, $pos);
     }
 
     /**
@@ -136,8 +375,8 @@ final class OrphanDetector
      * A clone between two orphans is not a replacement (both are dead), so it is
      * ignored here.
      *
-     * @param list<array{symbol: Symbol, confidence: string, reason: string}> $provisional
-     * @param list<Symbol>                                                     $definitions
+     * @param list<array{symbol: Symbol, confidence: string, reason: string, rule: ?string, evidence: ?string}> $provisional
+     * @param list<Symbol>                                                                                        $definitions
      * @return array<string, string> orphan key → "Fqn (file:line)" of the live original
      */
     private function duplicateTargets(array $provisional, array $definitions, ?CodeCloneMap $clones): array
@@ -223,7 +462,7 @@ final class OrphanDetector
     }
 
     /**
-     * @param list<array{symbol: Symbol, confidence: string, reason: string}> $provisional
+     * @param list<array{symbol: Symbol, confidence: string, reason: string, rule: ?string, evidence: ?string}> $provisional
      * @return list<Symbol>
      */
     private function symbolsOf(array $provisional): array

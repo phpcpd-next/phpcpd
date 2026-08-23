@@ -8,6 +8,7 @@
 /bench              export-ignore
 /paper              export-ignore
 /build              export-ignore
+/assets             export-ignore
 /.github            export-ignore
 
 /.editorconfig          export-ignore
@@ -18,5 +19,14 @@
 /phpstan-stubs.php       export-ignore
 /phpunit.xml            export-ignore
 /rector.php             export-ignore
+
+# Contributor- and history-facing docs. README, CHANGELOG and LICENSE ship;
+# these do not, because a consumer of the library never reads them and
+# MODERNIZATION.md alone is 68K. GitHub and Packagist render the README from the
+# repository, not from the dist archive, so /assets is not needed there either.
+/MODERNIZATION.md       export-ignore
+/ROADMAP.md             export-ignore
+/CONTRIBUTING.md        export-ignore
+/CLA.md                 export-ignore
 
 *.php text eol=lf diff=php

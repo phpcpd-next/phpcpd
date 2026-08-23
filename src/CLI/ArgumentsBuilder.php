@@ -13,6 +13,9 @@ declare(strict_types=1);
 
 namespace LucianoPereira\PhpcpdNext;
 
+use function explode;
+use function trim;
+
 final class ArgumentsBuilder
 {
     /**
@@ -21,7 +24,15 @@ final class ArgumentsBuilder
      */
     public function build(array $argv): Arguments
     {
-        $parsed = (new OptionParser())->parse(Options::definitions(), $argv);
+        $definitions = Options::definitions();
+        $parsed      = (new OptionParser())->parse($definitions, $argv);
+
+        // Settings are parsed as if they preceded argv, so an explicit flag wins
+        // on scalars and a repeatable option appends to what the file declared.
+        $parsed['options'] = [
+            ...$this->settings($parsed['options'], $parsed['arguments'], $definitions),
+            ...$parsed['options'],
+        ];
 
         $directories = [];
 
@@ -60,6 +71,11 @@ final class ArgumentsBuilder
         $typeAnchored     = false;
         $incremental      = false;
         $orphans          = false;
+        $defaultExcludes  = true;
+        $noSuppress       = [];
+        $failOn           = ['dead'];
+        $explain          = false;
+        $showConfig       = false;
         $verbose          = false;
         $help             = false;
         $version          = false;
@@ -139,6 +155,24 @@ final class ArgumentsBuilder
                 case 'orphans':
                     $orphans = true;
                     break;
+                case 'no-default-excludes':
+                    $defaultExcludes = false;
+                    break;
+                case 'no-suppress':
+                    $noSuppress = [...$noSuppress, ...$this->listValue($value)];
+                    break;
+                case 'fail-on':
+                    $failOn = $this->listValue($value);
+                    break;
+                case 'explain':
+                    $explain = true;
+                    break;
+                case 'show-config':
+                    $showConfig = true;
+                    break;
+                case 'config':
+                case 'no-config':
+                    break;
             }
         }
 
@@ -148,7 +182,7 @@ final class ArgumentsBuilder
             $directories = $preset->paths;
         }
 
-        if (empty($directories) && !$help && !$version) {
+        if (empty($directories) && !$help && !$version && !$showConfig) {
             throw new ArgumentsBuilderException('No directory specified');
         }
 
@@ -173,6 +207,76 @@ final class ArgumentsBuilder
             cacheDir: $cacheDir,
             incremental: $incremental,
             orphans: $orphans,
+            defaultExcludes: $defaultExcludes,
+            noSuppress: $noSuppress,
+            failOn: $failOn,
+            explain: $explain,
+            showConfig: $showConfig,
         );
+    }
+
+    /**
+     * Settings from phpcpd.ini, as parser options, lowest precedence first: user
+     * config then project config, or exactly the file --config names. An
+     * implicit file is used only when found, so the common case stays
+     * zero-configuration.
+     *
+     * @param list<array{0: string, 1: ?string}> $options
+     * @param list<string>                       $paths the directories being scanned
+     * @param list<OptionDefinition>             $definitions
+     * @throws ArgumentsBuilderException
+     * @return list<array{0: string, 1: ?string}>
+     */
+    private function settings(array $options, array $paths, array $definitions): array
+    {
+        $file = null;
+
+        foreach ($options as [$name, $value]) {
+            if ($name === 'no-config') {
+                return [];
+            }
+
+            if ($name === 'config' && $value !== null && $value !== '') {
+                $file = $value;
+            }
+        }
+
+        // Concatenating layers low-to-high is all the precedence rule needs: the
+        // option loop below already lets a later value replace a single-valued
+        // option and append to a repeatable one.
+        $files = $file !== null ? [$file] : ConfigFile::discoverAll($paths);
+
+        $settings = [];
+
+        foreach ($files as $candidate) {
+            $settings = [...$settings, ...ConfigFile::read($candidate, $definitions)];
+        }
+
+        return $settings;
+    }
+
+    /**
+     * Split a comma-separated option value. The parser has already validated
+     * each element against the option's allowed set.
+     *
+     * @return list<non-empty-string>
+     */
+    private function listValue(?string $value): array
+    {
+        if ($value === null || $value === '') {
+            return [];
+        }
+
+        $items = [];
+
+        foreach (explode(',', $value) as $item) {
+            $item = trim($item);
+
+            if ($item !== '') {
+                $items[] = $item;
+            }
+        }
+
+        return $items;
     }
 }

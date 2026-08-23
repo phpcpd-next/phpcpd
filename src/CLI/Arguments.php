@@ -19,6 +19,8 @@ final readonly class Arguments
      * @param list<non-empty-string> $directories
      * @param list<non-empty-string> $suffixes
      * @param list<non-empty-string> $exclude
+     * @param list<non-empty-string> $noSuppress orphan suppression rules to disable by name
+     * @param list<non-empty-string> $failOn     result tiers that make the run exit non-zero
      */
     public function __construct(
         private array $directories,
@@ -41,6 +43,11 @@ final readonly class Arguments
         private bool $typeAnchored = false,
         private bool $incremental = false,
         private bool $orphans = false,
+        private bool $defaultExcludes = true,
+        private array $noSuppress = [],
+        private array $failOn = ['dead'],
+        private bool $explain = false,
+        private bool $showConfig = false,
     ) {}
 
     /** @return list<non-empty-string> */
@@ -126,5 +133,27 @@ final readonly class Arguments
     public function orphans(): bool
     {
         return $this->orphans;
+    }
+    public function defaultExcludes(): bool
+    {
+        return $this->defaultExcludes;
+    }
+    /** @return list<non-empty-string> */
+    public function noSuppress(): array
+    {
+        return $this->noSuppress;
+    }
+    /** @return list<non-empty-string> */
+    public function failOn(): array
+    {
+        return $this->failOn;
+    }
+    public function explain(): bool
+    {
+        return $this->explain;
+    }
+    public function showConfig(): bool
+    {
+        return $this->showConfig;
     }
 }

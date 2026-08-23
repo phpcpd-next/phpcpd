@@ -20,7 +20,13 @@ so it can see exact copies, *reordered* clones, and *gapped* near-misses.
 - **Three token-based engines** — Rabin-Karp (exact) and TokenBag (reordered) run by default; the
   suffix tree (gapped Type-3) is an opt-in research engine.
 - **Orphan detection (`--orphans`)** — find unreferenced classes, interfaces, traits, enums, and
-  functions, with two confidence tiers and framework entry-point awareness.
+  functions, with four result tiers, structural suppression rules, and framework entry-point awareness.
+- **Generated and cache trees excluded by default** — a tool cache is a dense index of the very
+  identifiers an orphan scan searches for, so scanning one can turn a failing gate green.
+- **Suppression you can audit** — deliberate duplication is marked in comments, and a suppressed
+  symbol is still counted and listed on demand rather than silently dropped.
+- **`phpcpd.ini`** — per-project settings whose keys are the long option names, with
+  `--show-config` to see what is in force and which layer set it.
 - **Actionable console output** — every clone comes with a context-aware refactoring hint, plus a
   run summary (duplicated-line percentage, average and largest clone size).
 - **Inconsistent-clone reporting** — with `--algorithm=suffixtree`, diverged near-misses are flagged
@@ -202,8 +208,27 @@ Found 2 possible orphan(s) — review before removing:
   - Interface App\Contract\PaymentGateway
     src/Contract/PaymentGateway.php:9
     → never referenced (interface — may be implemented outside the scanned set)
-  ...
+
+  - Class App\Support\Dynamic
+    src/Support/Dynamic.php:11
+    → never referenced in code; name appears in a string literal (possible dynamic use)
+    ⤷ name appears at src/Support/Registry.php:23
+
+Planned, not yet wired — 1
+
+  - Class App\Console\Components\Spinner
+    src/Console/Components/Spinner.php:39
+    → Wired by the console rework.
+
+Suppressed (30): conditional 12 · fixtures 9 · config 8 · namespace 1
+  → --explain to list them
+
+829 symbols scanned in 764 files; 2 orphaned, 2 possible, 30 suppressed, 1 planned.
 ```
+
+Findings are grouped by cause rather than listed flat, so the group worth reading — the symbols
+nothing explains — is visible instead of buried. A string-literal demotion cites **where** the name
+appears, which is the whole verification for most entries; without it every demotion costs a grep.
 
 Each finding is **explained**, not just listed:
 
@@ -213,19 +238,67 @@ Each finding is **explained**, not just listed:
   almost certainly the stale copy a refactor replaced and forgot to delete. This reuses the clone
   engine — the orphan × clone synergy that a pure dead-code linter can't offer.
 
-**Two confidence tiers**, so the tool never nags you into deleting live code:
+**Four result tiers**, so the tool never nags you into deleting live code:
 
-| Tier | Meaning | Exit code |
-|------|---------|-----------|
-| **Definite** | Referenced nowhere; safe to delete. | Non-zero (CI gate) |
-| **Possible** | A contract (interface / `abstract` / `trait`) an out-of-tree package may implement, extend, or `use`, or a name that appears only in a **string literal** (a candidate for `new $class` / a DI-container id). | Zero (report only) |
+| Tier | Meaning | Gates CI |
+|------|---------|----------|
+| **Definite** | Referenced nowhere; safe to delete. | Yes (default) |
+| **Possible** | A contract (interface / `abstract` / `trait`) an out-of-tree package may implement, extend, or `use`, or a name that appears only in a **string literal** (a candidate for `new $class` / a DI-container id). | No |
+| **Suppressed** | A rule structurally accounts for it (see below). Counted and listed on request. | No |
+| **Planned** | Marked `@phpcpd-planned`: knowingly written ahead of the code that will wire it. | No |
 
-**What it won't false-alarm on** — framework entry points are reachable even when unreferenced:
+Widen the gate with `--fail-on=dead,planned` — shipping a release with staged, unwired components
+should be a decision someone makes on purpose.
 
-- Classes wired via attributes: `#[Route]`, `#[AsCommand]`, `#[AsEventListener]`, `#[AsMessageHandler]`,
-  `#[Entity]`, `#[Attribute]`, and more.
-- `*Test` classes (discovered by the test runner, not by a reference).
-- Anything marked `@api`, `@psalm-api`, `@phpstan-api`, `@phpcpd-keep`, or `@phpcpd-ignore-orphan`.
+### Suppression rules
+
+A symbol nothing references is not automatically a finding. Each rule below recognises a *structural*
+reason the symbol is fine — a guard statement, a namespace the project doesn't own, a manifest entry,
+a fixture path — never a name pattern or a guess about intent.
+
+| Rule | Recognises |
+|------|------------|
+| `conditional` | Declared inside `if (!function_exists('x'))` / `class_exists` / `interface_exists` / `trait_exists` / `enum_exists` — a polyfill or compatibility shim, by definition declared for a caller this scan cannot see. |
+| `namespace` | Declared outside every `psr-4`/`psr-0` prefix the project's own `composer.json` declares — code published under another package's namespace so someone else's call resolves to it. |
+| `manifest` | Named in `composer.json`: an `autoload.files` entry point, or an FQN under `extra` (Laravel providers and aliases, and anything shaped like a class name). |
+| `config` | Named in a `.neon`, `.yaml`, `.yml`, `.xml`, or `.dist` file — PHPStan rules, Symfony DI, Doctrine mapping. |
+| `fixtures` | Under a `Fixtures`/`Stubs` directory *inside a test tree*. Being unreferenced is what makes a fixture a fixture. |
+| `keep` | Carries `@api`, `@psalm-api`, `@phpstan-api`, `@phpcpd-keep`, or `@phpcpd-ignore-orphan`. |
+| `entrypoint` | Wired reflectively: `#[Route]`, `#[AsCommand]`, `#[AsEventListener]`, `#[AsMessageHandler]`, `#[Entity]`, `#[Attribute]` and more, or a `*Test` class. |
+| `planned` | Carries `@phpcpd-planned`. |
+
+**Suppressed does not mean hidden.** The count is always printed, broken down by rule; `--explain`
+lists the symbols. That is deliberate — a rule that starts over-firing shows up as a number that
+moved, whereas a silent suppression would quietly turn a real orphan into no output at all.
+
+```text
+Suppressed (30): conditional 12 · fixtures 9 · config 8 · namespace 1
+  → --explain to list them
+```
+
+Turn any rule off by name to audit it — the symbols are then judged normally rather than skipped:
+
+```bash
+phpcpd --orphans --no-suppress=fixtures,config src/
+phpcpd --orphans --no-suppress=all src/          # raw, unfiltered
+```
+
+### Tags
+
+Two docblock tags, making opposite claims — do not use one for the other:
+
+```php
+/** @phpcpd-keep Registered in phpstan/extension.neon */   // "this IS reachable, you just can't see it"
+/** @phpcpd-planned Wired by the console rework. */        // "this is NOT wired yet, and that's known"
+```
+
+Both take a free-text reason, which is printed next to the symbol so the next reader learns *why*
+without re-deriving it — and so a suppression whose stated reason has gone stale becomes reviewable.
+A `@phpcpd-planned` symbol that later *does* get referenced is reported as a possible finding, since
+the tag has served its purpose and should be deleted; `@phpcpd-keep` can never give that prompt.
+
+Tags must start a docblock line. Prose such as `Unlike @api classes, this one is internal` does not
+suppress anything.
 
 **Scope, honestly.** Orphan detection stops at the type/function level — the "unreferenced file" case.
 Method- and property-level dead code needs whole-program type inference (*which* class does
@@ -257,7 +330,141 @@ if ($result->hasDefiniteOrphans()) {
         echo $orphan->symbol->fqn, ' — ', $orphan->reason, PHP_EOL;
     }
 }
+
+// Accounted-for symbols are kept, not dropped — inspect or audit them:
+foreach ($result->suppressed() as $entry) {
+    echo $entry->symbol->fqn, ' suppressed by ', $entry->rule, PHP_EOL;
+}
+
+foreach ($result->planned() as $entry) {
+    echo $entry->symbol->fqn, ' — ', $entry->reason, PHP_EOL;   // the staged-work backlog
+}
+
+// Turn a rule off to see what it was accounting for.
+$audited = Orphans::detect('src', noSuppress: ['fixtures']);
 ```
+
+## Marking a duplication intentional
+
+Some duplication is correct design. A visitor dispatch table — one `match` arm per node type,
+repeated once per renderer — is parallel on purpose, and folding it into a `class => method` lookup
+would cost both type safety and the compile-visible `default => throw` that catches an unhandled
+case. Three notations say so:
+
+```php
+// phpcpd-ignore-start
+... deliberately parallel code ...
+// phpcpd-ignore-end
+
+/** @phpcpd-ignore-clone Dispatch table — one arm per block type, by design. */
+private function block(Block $block): string { ... }
+
+$x = $y; // phpcpd-ignore-line
+```
+
+A clone is dropped when **any** of its copies intersects a suppressed range — marking one side is a
+statement about the duplication itself, not about one participant. Region markers matter most,
+because a clone is a *range* and frequently corresponds to no single declaration. Markers are read
+only from files that actually took part in a clone, so an unmarked codebase pays nothing.
+
+Previously the only remedy was `--exclude` on the whole file, which also hid the duplication worth
+fixing.
+
+## Configuration file (`phpcpd.ini`)
+
+Settings live in a `phpcpd.ini` whose keys **are the long option names** — whatever `--help`
+documents is what you write down, so there is no second vocabulary to learn and an option is
+configurable the day it ships.
+
+```ini
+; phpcpd.ini
+min-tokens = 60
+exclude[]  = build
+exclude[]  = "*.blade.php"
+
+orphans     = true
+no-suppress = fixtures
+fail-on     = dead,planned
+```
+
+The file is found **from the paths being scanned**, not from where you typed the command, so
+`phpcpd ../other-project/src` picks up that project's settings rather than your shell's.
+
+Settings are layered, each overriding the last:
+
+```
+built-in defaults  →  ~/.config/phpcpd/phpcpd.ini  →  project phpcpd.ini  →  command line
+```
+
+A key the project file doesn't set keeps whatever the user config gave it; a key neither sets keeps
+the built-in default — so a project file states only its differences. Single-valued keys
+(`min-tokens`) are **replaced** by the closer layer; repeatable ones (`exclude`, `suffix`)
+**append**, because a project adding one exclude means "and also this", not "forget the others".
+
+Use `--config <file>` to name a file explicitly, or `--no-config` to ignore all of them. Unknown keys
+and invalid values are rejected by name, exactly as the equivalent flag would be.
+
+### Seeing what is actually in force
+
+Layering is only trustworthy if you can inspect it, and a setting no file mentions keeps a default
+that appears in no file at all. `--show-config` prints the resolved settings and names the layer that
+produced each one:
+
+```bash
+phpcpd --show-config src/
+```
+
+```text
+  Layers, lowest precedence first:
+    built-in defaults
+    project        /home/you/app/phpcpd.ini
+    command line
+
+  SETTING              VALUE    SOURCE
+  suffix               .php     (*) default
+  exclude              ignored  project
+  orphans              true     project
+  no-suppress          —        (*) default
+  fail-on              dead     (*) default
+  min-lines            5        (*) default
+  min-tokens           12       command line
+  ...
+
+  (*) falling back to the built-in default
+```
+
+A repeatable setting names every layer that contributed (`build, extra → project + command line`),
+since those append rather than replace. Research flags stay out of the table until one is set.
+
+## Default excludes
+
+Generated and cached trees are skipped by default:
+
+```
+vendor, node_modules, .git,
+.phpstan.cache, .phpunit.cache, .php-cs-fixer.cache, .psalm-cache, .rector.cache,
+var/cache, storage/framework, bootstrap/cache,
+build, dist, out, coverage
+```
+
+`vendor` and `node_modules` earn their place on cost alone. The **cache directories earn it on
+correctness**: a static-analysis result cache embeds the fully-qualified name of every class it
+analysed as a string literal, which satisfies an orphan scan's reference check for symbols that are
+genuinely unreferenced. Pointing phpcpd at a project root — the obvious thing to do — could
+therefore produce a **passing gate that passes for the wrong reason**, with nothing in the output
+hinting at it.
+
+These defaults match whole path **segments**, unlike `--exclude`, which is substring-based: a default
+named `out` prunes a directory called `out/`, never `routes/`. A file whose first 2 KB contains
+`@generated`, `Do not edit`, or `Auto-generated` is skipped too, wherever it lives.
+
+Every run states its scope, so a contaminated one is obvious at a glance:
+
+```text
+Scanned 764 files (3 directories, 15 exclude patterns applied).
+```
+
+Turn all of it off with `--no-default-excludes`.
 
 ## Output formats
 
@@ -302,9 +509,13 @@ Options for selecting files:
   --suffix <suffix>       Include files ending in <suffix> (default: .php; repeatable)
   --exclude <path>        Exclude paths (substring or glob, e.g. '*.blade.php'; repeatable)
   --preset <name>         Apply a framework preset (e.g. laravel): paths, suffixes, excludes
+  --no-default-excludes   Also scan generated/cache trees (skipped by default)
 
 Orphan detection (dead code):
   --orphans               Detect orphaned (unreferenced) symbols instead of clones
+  --no-suppress <rules>   Turn off suppression rules by name, comma-separated, or 'all'
+  --fail-on <tiers>       Tiers that exit non-zero, comma-separated (default: dead)
+  --explain               List every suppressed symbol instead of only counting them
 
 Options for analysing files:
   --rk                    Rabin-Karp only (exact/Type-1; faster, no reorder detection)
@@ -323,6 +534,9 @@ Options for CI integration:
   --incremental           Per-file index: re-tokenize only changed files (rabin-karp)
 
 General:
+  --config <file>         Read settings from <file> (default: ./phpcpd.ini when present)
+  --no-config             Ignore phpcpd.ini
+  --show-config           Print the settings in force, where each came from, and exit
   -h, --help              Print help
   -v, --version           Print version
 ```

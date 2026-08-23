@@ -13,7 +13,10 @@ declare(strict_types=1);
 
 namespace LucianoPereira\PhpcpdNext\Detector;
 
+use function array_keys;
+
 use LucianoPereira\PhpcpdNext\CodeCloneMap;
+
 use LucianoPereira\PhpcpdNext\Detector\Strategy\AbstractStrategy;
 
 final class Detector
@@ -35,6 +38,26 @@ final class Detector
 
         $this->strategy->postProcess();
 
-        return $result;
+        return CloneSuppressions::forFiles($this->filesWithClones($result))->filter($result);
+    }
+
+    /**
+     * Only files that took part in a clone can carry a marker that matters, and
+     * that is normally a small fraction of the scan — so suppression costs one
+     * extra read per reported file, not per scanned file.
+     *
+     * @return list<string>
+     */
+    private function filesWithClones(CodeCloneMap $result): array
+    {
+        $files = [];
+
+        foreach ($result->clones() as $clone) {
+            foreach ($clone->files() as $file) {
+                $files[$file->name()] = true;
+            }
+        }
+
+        return array_keys($files);
     }
 }
