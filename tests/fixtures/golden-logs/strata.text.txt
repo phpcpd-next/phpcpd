@@ -1,0 +1,19 @@
+Found clones (3), duplicated lines (59), files (4):
+
+  - tests/fixtures/strata/service_a.php:3-65 (63 lines) +1.53
+    tests/fixtures/strata/service_b.php:3-63
+    · in totals
+    → Consider extracting the shared lines into a reusable method, class, or trait.
+
+  - tests/fixtures/strata/table_rows_a.php:25-38 (14 lines) [demoted: table] +0.93
+    tests/fixtures/strata/table_rows_b.php:20-31
+    → Demoted as table — this is the shape that stratum describes, so extract it only if the repetition is not the point.
+
+  - tests/fixtures/strata/table_rows_a.php:25-27 (3 lines) [literals differ (12)] [demoted: table] -1.88
+    tests/fixtures/strata/table_rows_a.php:29-31
+    → Demoted as table — this is the shape that stratum describes, so extract it only if the repetition is not the point.
+
+1 asserted, 2 demoted (table 2 · registration 0).
+29.35% of scanned lines (201) are duplicated code.
+Clone lines: average (26), largest (61).
+

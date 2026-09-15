@@ -13,6 +13,7 @@ declare(strict_types=1);
 namespace LucianoPereira\PhpcpdNext\Orphan;
 
 use function dirname;
+use function in_array;
 use function is_array;
 use function is_file;
 use function is_string;
@@ -48,6 +49,14 @@ final readonly class ComposerManifest
      * @param array<string, true>   $entryPointFiles absolute paths from autoload.files
      * @param list<string>          $binFiles        absolute paths from bin
      * @param array<string, string> $references      name => location, from extra.*
+     * @param list<AutoloadRule>    $autoloadRules   the same map, kept as prefix/directory
+     *                                               pairs so a name can be resolved to the
+     *                                               file the autoloader would load it from
+     * @param list<string>          $classmapDirs    absolute directories from autoload.classmap,
+     *                                               whose contents are loaded whatever they
+     *                                               declare — the reason a namespace the psr-4
+     *                                               map does not own is not on its own evidence
+     *                                               that a file is foreign
      */
     private function __construct(
         public string $file,
@@ -56,6 +65,8 @@ final readonly class ComposerManifest
         public array $entryPointFiles,
         public array $binFiles,
         public array $references,
+        public array $autoloadRules = [],
+        public array $classmapDirs = [],
     ) {}
 
     /**
@@ -114,6 +125,8 @@ final readonly class ComposerManifest
         $entries    = [];
         $bins       = [];
         $references = [];
+        $rules      = [];
+        $classmap   = [];
 
         foreach (['autoload', 'autoload-dev'] as $section) {
             $autoload = $data[$section] ?? null;
@@ -131,17 +144,38 @@ final readonly class ComposerManifest
 
                 /** @var mixed $paths */
                 foreach ($map as $prefix => $paths) {
-                    if (!is_string($prefix) || $prefix === '') {
+                    if (!is_string($prefix)) {
                         continue;
                     }
 
-                    $prefixes[] = rtrim($prefix, '\\');
+                    // The fallback prefix ("" => "src/") owns every namespace, so
+                    // it says nothing about ownership and is left out of
+                    // $prefixes — but it maps names like any other rule, and a
+                    // rule left out of the resolution map would make a loadable
+                    // file look unreachable.
+                    if ($prefix !== '') {
+                        $prefixes[] = rtrim($prefix, '\\');
+                    }
 
                     foreach (is_array($paths) ? $paths : [$paths] as $path) {
                         if (is_string($path)) {
-                            $mappedDirs[] = rtrim($dir . '/' . rtrim($path, '/'), '/');
+                            $mapped = rtrim($dir . '/' . rtrim($path, '/'), '/');
+
+                            if ($prefix !== '') {
+                                $mappedDirs[] = $mapped;
+                            }
+
+                            $rules[] = new AutoloadRule($standard, $prefix, $mapped);
                         }
                     }
+                }
+            }
+
+            foreach (self::strings($autoload['classmap'] ?? null) as $path) {
+                $resolved = realpath($dir . '/' . rtrim($path, '/'));
+
+                if ($resolved !== false) {
+                    $classmap[] = $resolved;
                 }
             }
 
@@ -166,7 +200,7 @@ final readonly class ComposerManifest
             self::collectExtra($data['extra'], 'composer.json', $references);
         }
 
-        return new self($file, $prefixes, $mappedDirs, $entries, $bins, $references);
+        return new self($file, $prefixes, $mappedDirs, $entries, $bins, $references, $rules, $classmap);
     }
 
     /**
@@ -204,6 +238,40 @@ final readonly class ComposerManifest
         return $result;
     }
 
+    /**
+     * Is $file inside a directory this manifest wires — a psr-4/psr-0 root, a
+     * classmap root — or listed as an autoloaded or console entry point?
+     *
+     * A file that is not tells you nothing on its own; a file that IS must never
+     * be judged foreign, whatever namespace it declares. Laravel's seeders are
+     * the case this exists for: they live in a classmap root under
+     * `Database\\Seeders`, a namespace no psr-4 prefix covers, and calling them
+     * someone else's code would delete a working database bootstrap from the
+     * corpus.
+     */
+    public function wires(string $file): bool
+    {
+        $resolved = realpath($file);
+
+        if ($resolved === false) {
+            return false;
+        }
+
+        if (isset($this->entryPointFiles[$resolved]) || in_array($resolved, $this->binFiles, true)) {
+            return true;
+        }
+
+        foreach ([...$this->mappedDirs, ...$this->classmapDirs] as $directory) {
+            $root = realpath($directory);
+
+            if ($root !== false && ($resolved === $root || str_starts_with($resolved, $root . '/'))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** Does $namespace fall under a prefix this project declares? */
     public function owns(string $namespace): bool
     {
@@ -224,5 +292,30 @@ final readonly class ComposerManifest
     public function mappedDirectories(): array
     {
         return $this->mappedDirs;
+    }
+
+    /**
+     * Every path the autoload map would load $fqn from — usually one, more when a
+     * prefix maps to several directories (this project's own manifest maps
+     * `LucianoPereira\PhpcpdNext\` to three).
+     *
+     * Empty means the autoloader has no route to the name at all: it belongs to a
+     * namespace the project does not map, or the manifest declares no map.
+     *
+     * @return list<string>
+     */
+    public function pathsFor(string $fqn): array
+    {
+        $paths = [];
+
+        foreach ($this->autoloadRules as $rule) {
+            $path = $rule->pathFor($fqn);
+
+            if ($path !== null && !in_array($path, $paths, true)) {
+                $paths[] = $path;
+            }
+        }
+
+        return $paths;
     }
 }

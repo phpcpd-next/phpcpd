@@ -1,32 +1,60 @@
 # Keep the Packagist dist tarball lean: development-only paths are not shipped
 # to consumers of `composer require phpcpd-next/phpcpd`.
 #
-# NOTE: integration/ is intentionally NOT export-ignored — it is mapped in the
-# production autoloader (the PHPUnit integration), so consumers need it.
+# Two things here are load-bearing and are not development files, however much
+# they look like one:
+#
+#   /locale   is runtime data. `Strings\Catalogue` reads `locale/<code>.php`
+#             for every sentence the tool prints, so a dist archive without it
+#             cannot print anything at all — not a report, not a refusal, not
+#             its own help screen.
+#   /integration
+#             is mapped in the production autoloader (the PHPUnit integration),
+#             so consumers need it.
+#
+# Neither is export-ignored. Nothing that ships may be added to this list
+# without checking what reads it at runtime.
 
 /tests              export-ignore
 /bench              export-ignore
-/paper              export-ignore
 /build              export-ignore
 /assets             export-ignore
 /.github            export-ignore
 
-/.editorconfig          export-ignore
-/.gitattributes         export-ignore
-/.gitignore             export-ignore
-/.php-cs-fixer.dist.php  export-ignore
-/phpstan.neon           export-ignore
-/phpstan-stubs.php       export-ignore
-/phpunit.xml            export-ignore
-/rector.php             export-ignore
+# Maintainer scripts: the release runner and the phar and paper builders. The
+# console entry point a consumer runs is /phpcpd at the root — composer's `bin`
+# names that file, not this directory.
+/bin                export-ignore
 
-# Contributor- and history-facing docs. README, CHANGELOG and LICENSE ship;
-# these do not, because a consumer of the library never reads them and
-# MODERNIZATION.md alone is 68K. GitHub and Packagist render the README from the
-# repository, not from the dist archive, so /assets is not needed there either.
-/MODERNIZATION.md       export-ignore
-/ROADMAP.md             export-ignore
-/CONTRIBUTING.md        export-ignore
-/CLA.md                 export-ignore
+/.editorconfig           export-ignore
+/.gitattributes          export-ignore
+/.gitignore              export-ignore
+/.php-cs-fixer.dist.php  export-ignore
+/phpstan.neon            export-ignore
+/phpstan-bench.neon      export-ignore
+/phpunit.xml             export-ignore
+/rector.php              export-ignore
+
+# This project's own scan settings, which say where *its* fixtures and corpus
+# live. Meaningless in a consumer's checkout, and actively confusing if found
+# there: phpcpd reads ./phpcpd.ini by default.
+/phpcpd.ini         export-ignore
+
+# Composer ignores a dependency's lock file — it resolves from composer.json —
+# so this ships 163 KB that does nothing, and lists dev dependencies a consumer
+# has not installed, which a scanner walking vendor/ can report advisories
+# against. Three of the sixty-five packages installed here ship one. It stays in
+# the repository; export-ignore only keeps it out of the dist tarball.
+/composer.lock      export-ignore
+
+# Contributor- and history-facing docs. README, CHANGELOG, LICENSE, NOTICE and
+# CONTRIBUTORS ship; /docs does not. It is the research record, the paper and
+# the release notes — 3,500 lines of release-notes.md and a PDF — none of which
+# a consumer of the library reads, and all of which GitHub renders from the
+# repository rather than from the dist archive.
+/docs               export-ignore
+/CLA.md             export-ignore
+/CONTRIBUTING.md    export-ignore
+/ROADMAP.md         export-ignore
 
 *.php text eol=lf diff=php

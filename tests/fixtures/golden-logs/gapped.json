@@ -1,0 +1,141 @@
+{
+    "tool": "phpcpd-next",
+    "version": "2.0.0",
+    "summary": {
+        "clones": 1,
+        "inconsistentClones": 0,
+        "duplicatedLines": 90,
+        "filesWithClones": 4,
+        "percentage": "53.25%",
+        "settled": 0,
+        "unfounded": 0,
+        "asserted": 1,
+        "demoted": 0,
+        "demotedBy": {
+            "table": 0,
+            "registration": 0
+        },
+        "acknowledged": 0,
+        "staleAcknowledgments": []
+    },
+    "clones": [
+        {
+            "lines": 39,
+            "tokens": 141,
+            "gapped": true,
+            "files": [
+                {
+                    "path": "tests/fixtures/type3/clone_base.php",
+                    "line": 3,
+                    "lines": 39,
+                    "tokens": 141
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_exact_copy.php",
+                    "line": 3,
+                    "lines": 38,
+                    "tokens": 141
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_gapped.php",
+                    "line": 3,
+                    "lines": 41,
+                    "tokens": 151
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_wide_gap.php",
+                    "line": 3,
+                    "lines": 43,
+                    "tokens": 164
+                }
+            ],
+            "reordered": true,
+            "divergences": [
+                {
+                    "path": "tests/fixtures/type3/clone_base.php",
+                    "startLine": 35,
+                    "endLine": 41,
+                    "startToken": 113,
+                    "tokens": 28
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_base.php",
+                    "startLine": 36,
+                    "endLine": 36,
+                    "startToken": 116,
+                    "tokens": 0
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_exact_copy.php",
+                    "startLine": 34,
+                    "endLine": 40,
+                    "startToken": 113,
+                    "tokens": 28
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_exact_copy.php",
+                    "startLine": 35,
+                    "endLine": 35,
+                    "startToken": 116,
+                    "tokens": 0
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_gapped.php",
+                    "startLine": 37,
+                    "endLine": 38,
+                    "startToken": 116,
+                    "tokens": 10
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_gapped.php",
+                    "startLine": 37,
+                    "endLine": 43,
+                    "startToken": 123,
+                    "tokens": 28
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_gapped.php",
+                    "startLine": 38,
+                    "endLine": 38,
+                    "startToken": 126,
+                    "tokens": 0
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_wide_gap.php",
+                    "startLine": 38,
+                    "endLine": 40,
+                    "startToken": 116,
+                    "tokens": 23
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_wide_gap.php",
+                    "startLine": 39,
+                    "endLine": 40,
+                    "startToken": 126,
+                    "tokens": 13
+                },
+                {
+                    "path": "tests/fixtures/type3/clone_wide_gap.php",
+                    "startLine": 39,
+                    "endLine": 45,
+                    "startToken": 136,
+                    "tokens": 28
+                }
+            ],
+            "stratum": "asserted",
+            "functions": [
+                "processLedger"
+            ],
+            "confidence": {
+                "logOdds": 1.387540123343876,
+                "terms": {
+                    "prior": 0.11878353598996702,
+                    "sites": -1.002183470999325,
+                    "scope": -0.04683894403817024,
+                    "lines": 0.5590002138932082,
+                    "literal": 1.758778788498196
+                }
+            }
+        }
+    ]
+}

@@ -1,0 +1,97 @@
+{
+    "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+    "version": "2.1.0",
+    "runs": [
+        {
+            "tool": {
+                "driver": {
+                    "name": "phpcpd-next",
+                    "informationUri": "https://github.com/phpcpd-next/phpcpd",
+                    "version": "2.0.0",
+                    "rules": [
+                        {
+                            "id": "duplicate-code",
+                            "name": "DuplicateCode",
+                            "shortDescription": {
+                                "text": "Exact duplicated code (Type-1/2)."
+                            }
+                        },
+                        {
+                            "id": "inconsistent-clone",
+                            "name": "InconsistentClone",
+                            "shortDescription": {
+                                "text": "Gapped (Type-3) clone \u2014 copies diverge; bug risk."
+                            }
+                        },
+                        {
+                            "id": "reordered-clone",
+                            "name": "ReorderedClone",
+                            "shortDescription": {
+                                "text": "Reordered (Type-3) clone \u2014 same material, different sequence."
+                            }
+                        }
+                    ]
+                }
+            },
+            "results": [
+                {
+                    "ruleId": "reordered-clone",
+                    "level": "warning",
+                    "message": {
+                        "text": "Reordered clone: 39 lines, 141 tokens duplicated across 4 locations."
+                    },
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {
+                                    "uri": "tests/fixtures/type3/clone_base.php"
+                                },
+                                "region": {
+                                    "startLine": 3,
+                                    "endLine": 41
+                                }
+                            }
+                        },
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {
+                                    "uri": "tests/fixtures/type3/clone_exact_copy.php"
+                                },
+                                "region": {
+                                    "startLine": 3,
+                                    "endLine": 40
+                                }
+                            }
+                        },
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {
+                                    "uri": "tests/fixtures/type3/clone_gapped.php"
+                                },
+                                "region": {
+                                    "startLine": 3,
+                                    "endLine": 43
+                                }
+                            }
+                        },
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {
+                                    "uri": "tests/fixtures/type3/clone_wide_gap.php"
+                                },
+                                "region": {
+                                    "startLine": 3,
+                                    "endLine": 45
+                                }
+                            }
+                        }
+                    ],
+                    "properties": {
+                        "stratum": "asserted",
+                        "confidence": 1.387540123343876
+                    }
+                }
+            ]
+        }
+    ]
+}

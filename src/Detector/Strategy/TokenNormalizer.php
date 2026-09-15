@@ -15,6 +15,9 @@ namespace LucianoPereira\PhpcpdNext\Detector\Strategy;
 use const T_CONSTANT_ENCAPSED_STRING;
 use const T_DNUMBER;
 use const T_LNUMBER;
+use const T_NAME_FULLY_QUALIFIED;
+use const T_NAME_QUALIFIED;
+use const T_NAME_RELATIVE;
 use const T_STRING;
 use const T_VARIABLE;
 
@@ -55,6 +58,18 @@ final class TokenNormalizer
     {
         return match ($tokenCode) {
             T_VARIABLE => '$',
+            // A namespaced name is an identifier like any other. PHP 8 stopped
+            // emitting `Foo`, `\`, `Bar` as three tokens and now bundles the
+            // whole name into one T_NAME_* token, which this never learned
+            // about: `Foo::make()` normalized and `App\Foo::make()` did not, so
+            // a consistent rename was a Type-2 clone only where the code
+            // happened to be unqualified. Every fully-qualified reference —
+            // which is most of modern PHP, and all of it under a `\` prefix —
+            // silently fell out of the normalized view.
+            //
+            // Type-anchoring is unaffected: the seventeen names it keeps
+            // concrete are built-in scalars, which are never qualified.
+            T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_NAME_RELATIVE => 'ID',
             T_STRING   => ($this->typeAnchored && isset(self::$phpTypes[$content]))
                             ? $content
                             : 'ID',

@@ -26,6 +26,8 @@ use LucianoPereira\PhpcpdNext\CodeCloneMap;
 use LucianoPereira\PhpcpdNext\Detector\Strategy\DefaultStrategy;
 use LucianoPereira\PhpcpdNext\Detector\Strategy\FileTokens;
 use LucianoPereira\PhpcpdNext\Detector\Strategy\StrategyConfiguration;
+use LucianoPereira\PhpcpdNext\Detector\Strategy\Unified\UnifiedStrategy;
+use LucianoPereira\PhpcpdNext\InvalidStrategyException;
 
 /**
  * Hummel's per-file incremental index (ICSM 2010).
@@ -50,13 +52,14 @@ final class IncrementalIndex
 {
     private readonly string $dir;
 
-    /** @var array<string, array{hash: string, tokens: FileTokens}> */
+    /** @var array<string, array{hash: string, tokens: FileTokens, fingerprints?: list<array{0: string, 1: int}>, normalized?: string, normalizedFingerprints?: list<array{0: string, 1: int}>}> */
     private array $stored = [];
 
     public function __construct(
         string $dir,
         private readonly string $configFingerprint,
         private readonly StrategyConfiguration $config,
+        private readonly string $algorithm = 'rabin-karp',
     ) {
         $this->dir = rtrim($dir, '/\\');
     }
@@ -67,11 +70,29 @@ final class IncrementalIndex
      * returning.
      *
      * @param list<string> $files
+     * @throws InvalidStrategyException
      */
     public function detect(array $files): IndexResult
     {
         $this->load();
 
+        $result = $this->algorithm === 'unified'
+            ? $this->detectUnified($files)
+            : $this->detectRabinKarp($files);
+
+        // The map is assembled here rather than by `Engine::detect()`, so the
+        // settling the engine does has to be asked for. An index is allowed to
+        // skip work and never to change the answer — without this the indexed
+        // run reported 18 clones where the plain run reported 17, which is the
+        // one thing `bench/check-incremental.php` exists to catch.
+        $result->clones->settle();
+
+        return $result;
+    }
+
+    /** @param list<string> $files */
+    private function detectRabinKarp(array $files): IndexResult
+    {
         $strategy = new DefaultStrategy($this->config);
         $map      = new CodeCloneMap();
         $reused   = 0;
@@ -85,9 +106,10 @@ final class IncrementalIndex
                 continue;
             }
 
-            $tokens = $this->reuse($file, $hash);
+            $entry = $this->reuse($file, $hash);
 
-            if ($tokens !== null) {
+            if ($entry !== null) {
+                $tokens = $entry['tokens'];
                 $reused++;
             } else {
                 $buffer = file_get_contents($file);
@@ -111,11 +133,81 @@ final class IncrementalIndex
     }
 
     /**
-     * Returns the cached tokenization for $file if the index holds an entry whose
-     * stored content hash still matches — otherwise null (added or changed), so the
-     * file must be re-tokenized.
+     * The same idea one stage further along.
+     *
+     * Rabin-Karp's expensive per-file step is tokenization; the unified engine has
+     * a second one, winnowing the signature into its selected fingerprints. Both
+     * are pure functions of the file's bytes and the configuration, so both are
+     * cached together and an unchanged file costs neither. What is left for a warm
+     * run is the cross-file work — building the postings table and extending the
+     * seeds — which depends on the whole corpus and so cannot be cached per file.
+     *
+     * @param list<string> $files
+     * @throws InvalidStrategyException
      */
-    private function reuse(string $file, string $hash): ?FileTokens
+    private function detectUnified(array $files): IndexResult
+    {
+        $strategy = new UnifiedStrategy($this->config);
+        $map      = new CodeCloneMap();
+        $reused   = 0;
+        $scanned  = 0;
+        $manifest = [];
+
+        foreach ($files as $file) {
+            $hash = hash_file('sha256', $file);
+
+            if ($hash === false) {
+                continue;
+            }
+
+            $entry            = $this->reuse($file, $hash);
+            $fingerprints     = $entry['fingerprints'] ?? null;
+            $normalized       = $entry['normalized'] ?? null;
+            $normalizedPrints = $entry['normalizedFingerprints'] ?? null;
+
+            if ($entry !== null && $fingerprints !== null && $normalized !== null && $normalizedPrints !== null) {
+                $tokens = $entry['tokens'];
+                $reused++;
+            } else {
+                $buffer = file_get_contents($file);
+
+                if ($buffer === false) {
+                    continue;
+                }
+
+                $tokens           = $strategy->encode($buffer);
+                $fingerprints     = $strategy->fingerprint($tokens->signature);
+                $normalized       = $strategy->encodeNormalized($buffer);
+                $normalizedPrints = $strategy->fingerprint($normalized, normalized: true);
+                $scanned++;
+            }
+
+            $strategy->add($file, $tokens, $fingerprints, $normalized, $normalizedPrints, $map);
+            $manifest[$file] = [
+                'hash'                   => $hash,
+                'tokens'                 => $tokens,
+                'fingerprints'           => $fingerprints,
+                'normalized'             => $normalized,
+                'normalizedFingerprints' => $normalizedPrints,
+            ];
+        }
+
+        $strategy->postProcess();
+
+        $this->stored = $manifest;
+        $this->save();
+
+        return new IndexResult($map, $reused, $scanned);
+    }
+
+    /**
+     * The cached entry for $file if the index holds one whose stored content hash
+     * still matches — otherwise null (added or changed), so the file must be
+     * re-encoded.
+     *
+     * @return array{hash: string, tokens: FileTokens, fingerprints?: list<array{0: string, 1: int}>, normalized?: string, normalizedFingerprints?: list<array{0: string, 1: int}>}|null
+     */
+    private function reuse(string $file, string $hash): ?array
     {
         $entry = $this->stored[$file] ?? null;
 
@@ -123,7 +215,7 @@ final class IncrementalIndex
             return null;
         }
 
-        return $entry['tokens'];
+        return $entry;
     }
 
     private function load(): void

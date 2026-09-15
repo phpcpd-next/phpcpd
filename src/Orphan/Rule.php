@@ -27,6 +27,8 @@ use function array_keys;
  * stops gating the exit code, so a misfiring rule stays visible (`--explain`)
  * instead of turning a real orphan into silence.
  */
+use LucianoPereira\PhpcpdNext\Strings\Catalogue;
+
 final class Rule
 {
     /** Declared inside `if (!function_exists('x'))` — a polyfill or shim. */
@@ -35,8 +37,11 @@ final class Rule
     /** Declared under a fixture/stub path within a scanned tree. */
     public const string FIXTURES = 'fixtures';
 
-    /** Named in a non-PHP config file (neon / yaml / xml / json). */
+    /** Named in a config file — neon / yaml / xml, or a `config/*.php` array. */
     public const string CONFIG = 'config';
+
+    /** Named in a template (blade / twig / latte / tpl) — a view is a call site. */
+    public const string TEMPLATE = 'template';
 
     /** Named in composer.json — bin, autoload.files, or extra.*. */
     public const string MANIFEST = 'manifest';
@@ -50,23 +55,50 @@ final class Rule
     /** Wired reflectively — a framework attribute or a test class. */
     public const string ENTRYPOINT = 'entrypoint';
 
+    /** Declared in a directory a sibling file globs and instantiates by filename. */
+    public const string DISCOVERY = 'discovery';
+
+    /** Named by a suffix a trait its base class uses appends at runtime. */
+    public const string CONVENTION = 'convention';
+
     /** Carries @phpcpd-planned: known to be unwired, deliberately. */
     public const string PLANNED = 'planned';
 
-    /** @return array<string, string> rule name => report heading */
+    /**
+     * Rule name => the heading the report prints for it.
+     *
+     * The names are the code's — a user types them in `--no-suppress` — and the
+     * headings are the catalogue's, so a translation cannot change what has to
+     * be typed and a rename cannot silently orphan a sentence.
+     *
+     * @return array<string, string>
+     */
     public static function labels(): array
     {
-        return [
-            self::CONDITIONAL      => 'Conditionally declared (polyfill / compatibility shim)',
-            self::FIXTURES         => 'Test fixtures (loaded by path or by name)',
-            self::CONFIG           => 'Registered in a non-PHP config file',
-            self::MANIFEST         => 'Referenced from composer.json',
-            self::NAMESPACE_PREFIX => "Declared outside the project's own namespaces (compatibility shim)",
-            self::KEEP             => 'Marked as kept (@api / @phpcpd-keep)',
-            self::ENTRYPOINT       => 'Framework entry points (attribute / test class)',
-            self::PLANNED          => 'Planned, not yet wired',
-        ];
+        $strings = new Catalogue();
+        $labels  = [];
+
+        foreach (self::NAMES as $name) {
+            $labels[$name] = $strings->get('label.orphan.' . $name);
+        }
+
+        return $labels;
     }
+
+    /** Every rule, in report order. @var non-empty-list<non-empty-string> */
+    private const array NAMES = [
+        self::CONDITIONAL,
+        self::FIXTURES,
+        self::CONFIG,
+        self::TEMPLATE,
+        self::MANIFEST,
+        self::NAMESPACE_PREFIX,
+        self::KEEP,
+        self::ENTRYPOINT,
+        self::DISCOVERY,
+        self::CONVENTION,
+        self::PLANNED,
+    ];
 
     /** @return non-empty-list<non-empty-string> */
     public static function names(): array
@@ -77,10 +109,12 @@ final class Rule
 
     public static function label(?string $rule): string
     {
+        $none = (new Catalogue())->get('label.orphan.none');
+
         if ($rule === null || $rule === '') {
-            return 'No reference found';
+            return $none;
         }
 
-        return self::labels()[$rule] ?? 'No reference found';
+        return self::labels()[$rule] ?? $none;
     }
 }

@@ -1,0 +1,122 @@
+{
+    "tool": "phpcpd-next",
+    "version": "2.0.0",
+    "summary": {
+        "clones": 3,
+        "inconsistentClones": 0,
+        "duplicatedLines": 59,
+        "filesWithClones": 4,
+        "percentage": "29.35%",
+        "settled": 0,
+        "unfounded": 0,
+        "asserted": 1,
+        "demoted": 2,
+        "demotedBy": {
+            "table": 2,
+            "registration": 0
+        },
+        "acknowledged": 0,
+        "staleAcknowledgments": []
+    },
+    "clones": [
+        {
+            "lines": 61,
+            "tokens": 190,
+            "gapped": false,
+            "files": [
+                {
+                    "path": "tests/fixtures/strata/service_a.php",
+                    "line": 3,
+                    "lines": 63,
+                    "tokens": 190
+                },
+                {
+                    "path": "tests/fixtures/strata/service_b.php",
+                    "line": 3,
+                    "lines": 61,
+                    "tokens": 190
+                }
+            ],
+            "stratum": "asserted",
+            "functions": [
+                "totals"
+            ],
+            "confidence": {
+                "logOdds": 1.534043722620702,
+                "terms": {
+                    "prior": 0.11878353598996702,
+                    "sites": 0.1669708761425657,
+                    "scope": -0.04683894403817024,
+                    "lines": -0.3370878106634274,
+                    "literal": 1.6322160651897668
+                }
+            }
+        },
+        {
+            "lines": 14,
+            "tokens": 229,
+            "gapped": false,
+            "files": [
+                {
+                    "path": "tests/fixtures/strata/table_rows_a.php",
+                    "line": 25,
+                    "tokens": 229
+                },
+                {
+                    "path": "tests/fixtures/strata/table_rows_b.php",
+                    "line": 20,
+                    "lines": 12,
+                    "tokens": 229
+                }
+            ],
+            "stratum": "demoted",
+            "demotedBy": [
+                "table"
+            ],
+            "confidence": {
+                "logOdds": 0.9285143762419258,
+                "terms": {
+                    "prior": 0.11878353598996702,
+                    "sites": 0.1669708761425657,
+                    "scope": -0.04683894403817024,
+                    "lines": 0.5590002138932082,
+                    "literal": 0.1305986942543551
+                }
+            }
+        },
+        {
+            "lines": 5,
+            "tokens": 72,
+            "gapped": false,
+            "files": [
+                {
+                    "path": "tests/fixtures/strata/table_rows_a.php",
+                    "line": 25,
+                    "lines": 3,
+                    "tokens": 72
+                },
+                {
+                    "path": "tests/fixtures/strata/table_rows_a.php",
+                    "line": 29,
+                    "lines": 3,
+                    "tokens": 72
+                }
+            ],
+            "stratum": "demoted",
+            "demotedBy": [
+                "table"
+            ],
+            "literalDivergences": 12,
+            "confidence": {
+                "logOdds": -1.8785878238106044,
+                "terms": {
+                    "prior": 0.11878353598996702,
+                    "sites": 0.1669708761425657,
+                    "scope": 0.0162279064879447,
+                    "lines": -2.311168836685437,
+                    "literal": 0.1305986942543551
+                }
+            }
+        }
+    ]
+}

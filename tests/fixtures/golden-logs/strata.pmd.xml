@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pmd-cpd>
+  <duplication lines="61" tokens="190" stratum="asserted" confidence="+1.5340">
+    <file path="tests/fixtures/strata/service_a.php" line="3" endline="65"/>
+    <file path="tests/fixtures/strata/service_b.php" line="3" endline="63"/>
+    <codefragment>declare(strict_types=1);
+/*
+ * This file is part of PhpcpdNext.
+ *
+ * (c) 2026 Luciano Federico Pereira
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+/*
+ * Ordinary program text with a real clone: not a table, not a registration file,
+ * so it is ASSERTED. The stratification has to leave normal duplication alone or
+ * it is not a lens, it is a filter.
+ */
+
+
+final class ServiceA
+{
+    public function totals(array $rows): array
+    {
+        $sum = 0;
+        $count = 0;
+        $largest = 0;
+        $smallest = 0;
+        $taxed = 0;
+        $refunded = 0;
+
+        foreach ($rows as $row) {
+            $sum += $row['amount'];
+            $count++;
+
+            if ($row['amount'] &gt; $largest) {
+                $largest = $row['amount'];
+            }
+
+            if ($row['amount'] &lt; $smallest) {
+                $smallest = $row['amount'];
+            }
+
+            if ($row['taxable']) {
+                $taxed += $row['amount'];
+            }
+
+            if ($row['refunded']) {
+                $refunded += $row['amount'];
+            }
+        }
+
+        if ($count === 0) {
+            return ['sum' =&gt; 0, 'average' =&gt; 0, 'largest' =&gt; 0, 'smallest' =&gt; 0];
+        }
+
+        return [
+            'sum' =&gt; $sum,
+            'average' =&gt; $sum / $count,
+            'largest' =&gt; $largest,
+            'smallest' =&gt; $smallest,
+            'taxed' =&gt; $taxed,
+            'refunded' =&gt; $refunded,
+        ];
+    }
+}
+</codefragment>
+  </duplication>
+  <duplication lines="14" tokens="229" stratum="demoted" demotedBy="table" confidence="+0.9285">
+    <file path="tests/fixtures/strata/table_rows_a.php" line="25" endline="38"/>
+    <file path="tests/fixtures/strata/table_rows_b.php" line="20" endline="31"/>
+    <codefragment>    ['code' =&gt; 'IT', 'prefix' =&gt; 39, 'name' =&gt; 'italy', 'active' =&gt; true],
+    ['code' =&gt; 'JP', 'prefix' =&gt; 81, 'name' =&gt; 'japan', 'active' =&gt; true],
+    ['code' =&gt; 'KR', 'prefix' =&gt; 82, 'name' =&gt; 'korea', 'active' =&gt; true],
+    ['code' =&gt; 'CN', 'prefix' =&gt; 86, 'name' =&gt; 'china', 'active' =&gt; false],
+    ['code' =&gt; 'DE', 'prefix' =&gt; 49, 'name' =&gt; 'germany', 'active' =&gt; true],
+    ['code' =&gt; 'FR', 'prefix' =&gt; 33, 'name' =&gt; 'france', 'active' =&gt; true],
+    ['code' =&gt; 'ES', 'prefix' =&gt; 34, 'name' =&gt; 'spain', 'active' =&gt; true],
+    ['code' =&gt; 'PT', 'prefix' =&gt; 351, 'name' =&gt; 'portugal', 'active' =&gt; false],
+    ['code' =&gt; 'NL', 'prefix' =&gt; 31, 'name' =&gt; 'holland', 'active' =&gt; true],
+    ['code' =&gt; 'BE', 'prefix' =&gt; 32, 'name' =&gt; 'belgium', 'active' =&gt; true],
+    ['code' =&gt; 'PL', 'prefix' =&gt; 48, 'name' =&gt; 'poland', 'active' =&gt; true],
+    ['code' =&gt; 'SE', 'prefix' =&gt; 46, 'name' =&gt; 'sweden', 'active' =&gt; false],
+    ['delta' =&gt; 'nine', 'epsilon' =&gt; 91],
+    ['delta' =&gt; 'ten', 'epsilon' =&gt; 92],
+</codefragment>
+  </duplication>
+  <duplication lines="5" tokens="72" stratum="demoted" demotedBy="table" confidence="-1.8786">
+    <file path="tests/fixtures/strata/table_rows_a.php" line="25" endline="27"/>
+    <file path="tests/fixtures/strata/table_rows_a.php" line="29" endline="31"/>
+    <codefragment>    ['alpha' =&gt; 'two', 'beta' =&gt; 12, 'gamma' =&gt; 'blue'],
+    ['code' =&gt; 'IT', 'prefix' =&gt; 39, 'name' =&gt; 'italy', 'active' =&gt; true],
+    ['code' =&gt; 'JP', 'prefix' =&gt; 81, 'name' =&gt; 'japan', 'active' =&gt; true],
+    ['code' =&gt; 'KR', 'prefix' =&gt; 82, 'name' =&gt; 'korea', 'active' =&gt; true],
+    ['code' =&gt; 'CN', 'prefix' =&gt; 86, 'name' =&gt; 'china', 'active' =&gt; false],
+</codefragment>
+  </duplication>
+</pmd-cpd>

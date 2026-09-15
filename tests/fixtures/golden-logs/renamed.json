@@ -1,0 +1,57 @@
+{
+    "tool": "phpcpd-next",
+    "version": "2.0.0",
+    "summary": {
+        "clones": 1,
+        "inconsistentClones": 0,
+        "duplicatedLines": 22,
+        "filesWithClones": 2,
+        "percentage": "33.33%",
+        "settled": 0,
+        "unfounded": 0,
+        "asserted": 1,
+        "demoted": 0,
+        "demotedBy": {
+            "table": 0,
+            "registration": 0
+        },
+        "acknowledged": 0,
+        "staleAcknowledgments": []
+    },
+    "clones": [
+        {
+            "lines": 31,
+            "tokens": 117,
+            "gapped": false,
+            "files": [
+                {
+                    "path": "tests/fixtures/type2/rename_base.php",
+                    "line": 3,
+                    "lines": 31,
+                    "tokens": 117
+                },
+                {
+                    "path": "tests/fixtures/type2/rename_variant.php",
+                    "line": 3,
+                    "lines": 31,
+                    "tokens": 117
+                }
+            ],
+            "stratum": "asserted",
+            "literalDivergences": 5,
+            "functions": [
+                "summarize"
+            ],
+            "confidence": {
+                "logOdds": 2.5566944704857666,
+                "terms": {
+                    "prior": 0.11878353598996702,
+                    "sites": 0.1669708761425657,
+                    "scope": -0.04683894403817024,
+                    "lines": 0.5590002138932082,
+                    "literal": 1.758778788498196
+                }
+            }
+        }
+    ]
+}

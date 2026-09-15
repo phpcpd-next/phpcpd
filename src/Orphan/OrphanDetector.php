@@ -53,6 +53,8 @@ use LucianoPereira\PhpcpdNext\CodeCloneMap;
  * clone map — the same duplication engine, reused to tell "dead" apart from
  * "dead because it was replaced."
  */
+use LucianoPereira\PhpcpdNext\Strings\Catalogue;
+
 final class OrphanDetector
 {
     /**
@@ -73,6 +75,7 @@ final class OrphanDetector
 
     public function __construct(
         private readonly SymbolCollector $collector = new SymbolCollector(),
+        private readonly Catalogue $strings = new Catalogue(),
     ) {}
 
     /**
@@ -90,15 +93,16 @@ final class OrphanDetector
     ): OrphanResult {
         $config    = $config ?? new OrphanConfiguration();
         $context   = $context ?? new ProjectContext();
-        $collected = $this->collector->collect($files);
+        $collected = $this->collector->collect($files, $config);
         $roots     = $this->rootsFor($files, $config);
+        $byName    = $this->classesByName($collected->definitions);
 
         // First pass: which symbols are orphaned, and why (base reason/tier).
         /** @var list<array{symbol: Symbol, confidence: string, reason: string, rule: ?string, evidence: ?string}> $provisional */
         $provisional = [];
 
         foreach ($collected->definitions as $symbol) {
-            $verdict = $this->classify($symbol, $collected, $config, $context, $roots);
+            $verdict = $this->classify($symbol, $collected, $config, $context, $roots, $byName);
 
             if ($verdict !== null) {
                 $provisional[] = $verdict;
@@ -145,7 +149,8 @@ final class OrphanDetector
      * skipped — turning a rule off means "judge these symbols normally", which is
      * what makes --no-suppress a way to audit the rule itself.
      *
-     * @param list<string> $roots
+     * @param list<string>                $roots
+     * @param array<string, list<string>> $byName short class name => fqns declared under it
      * @return array{symbol: Symbol, confidence: string, reason: string, rule: ?string, evidence: ?string}|null
      */
     private function classify(
@@ -154,6 +159,7 @@ final class OrphanDetector
         OrphanConfiguration $config,
         ProjectContext $context,
         array $roots,
+        array $byName,
     ): ?array {
         if (($collected->references[$symbol->name] ?? 0) > 0) {
             // A planned symbol that became referenced has outlived its tag. This
@@ -162,7 +168,7 @@ final class OrphanDetector
                 return $this->verdict(
                     $symbol,
                     Orphan::CONFIDENCE_POSSIBLE,
-                    'referenced now — @phpcpd-planned has served its purpose and can be removed',
+                    $this->strings->get('explain.orphan.plannedServed'),
                     Rule::PLANNED,
                 );
             }
@@ -183,7 +189,7 @@ final class OrphanDetector
             return $this->verdict(
                 $symbol,
                 Orphan::CONFIDENCE_SUPPRESSED,
-                'declared in a composer autoload.files entry point',
+                $this->strings->get('explain.orphan.manifest'),
                 Rule::MANIFEST,
                 'composer.json',
             );
@@ -195,7 +201,7 @@ final class OrphanDetector
             return $this->verdict(
                 $symbol,
                 Orphan::CONFIDENCE_SUPPRESSED,
-                "declared outside the project's own namespaces (compatibility shim)",
+                $this->strings->get('explain.orphan.foreignNs'),
                 Rule::NAMESPACE_PREFIX,
             );
         }
@@ -204,24 +210,74 @@ final class OrphanDetector
             return $this->verdict(
                 $symbol,
                 Orphan::CONFIDENCE_SUPPRESSED,
-                'test fixture — loaded by path or named as a string, never referenced',
+                $this->strings->get('explain.orphan.fixture'),
                 Rule::FIXTURES,
             );
         }
 
-        foreach ([[Rule::MANIFEST, $context->manifestNames], [Rule::CONFIG, $context->configNames]] as [$rule, $names]) {
+        // Constructed-name idioms are asked before the wired-by-name lookups, and
+        // for the same reason those come last: this answer is already in memory
+        // (harvested from the token pass) while those cost a filesystem sweep, so
+        // a symbol an idiom accounts for never provokes one.
+        if ($config->ruleEnabled(Rule::DISCOVERY) && $symbol->kind === Symbol::KIND_CLASS) {
+            $where = $collected->idioms->discoveredBy($symbol->file);
+
+            if ($where !== null) {
+                return $this->verdict(
+                    $symbol,
+                    Orphan::CONFIDENCE_SUPPRESSED,
+                    $this->strings->get('explain.orphan.discovery'),
+                    Rule::DISCOVERY,
+                    $where,
+                );
+            }
+        }
+
+        if ($config->ruleEnabled(Rule::CONVENTION) && $symbol->kind === Symbol::KIND_CLASS) {
+            $convention = $collected->idioms->conventionFor($symbol->name, $byName);
+
+            if ($convention !== null) {
+                return $this->verdict(
+                    $symbol,
+                    Orphan::CONFIDENCE_SUPPRESSED,
+                    $this->strings->get('explain.orphan.convention', [
+                        'base'  => $convention['base'],
+                        'trait' => $convention['trait'],
+                    ]),
+                    Rule::CONVENTION,
+                    $convention['at'],
+                );
+            }
+        }
+
+        // Wired-by-name is the last question asked, and the only one whose answer
+        // costs a filesystem sweep (see {@see NameSweep}). Each map is therefore
+        // read one rule at a time, after that rule is known to be enabled: a
+        // symbol named in a config file never provokes the template sweep, and a
+        // symbol that never gets this far provokes neither.
+        foreach ([Rule::MANIFEST, Rule::CONFIG, Rule::TEMPLATE] as $rule) {
+            if (!$config->ruleEnabled($rule)) {
+                continue;
+            }
+
+            $names = match ($rule) {
+                Rule::MANIFEST => $context->manifestNames,
+                Rule::CONFIG   => $context->configNames,
+                default        => $context->templateNames,
+            };
+
             $where = $names[$symbol->fqn] ?? $names[$symbol->name] ?? null;
 
-            if ($where !== null && $config->ruleEnabled($rule)) {
+            if ($where !== null) {
                 return $this->verdict($symbol, Orphan::CONFIDENCE_SUPPRESSED, Rule::label($rule), $rule, $where);
             }
         }
 
         if ($symbol->isContract()) {
             return $this->verdict($symbol, Orphan::CONFIDENCE_POSSIBLE, match ($symbol->kind) {
-                Symbol::KIND_INTERFACE => 'never referenced (interface — may be implemented outside the scanned set)',
-                Symbol::KIND_TRAIT     => 'never referenced (trait — may be used by classes outside the scanned set)',
-                default                => 'never referenced (abstract — may be extended outside the scanned set)',
+                Symbol::KIND_INTERFACE => $this->strings->get('explain.orphan.interface'),
+                Symbol::KIND_TRAIT     => $this->strings->get('explain.orphan.trait'),
+                default                => $this->strings->get('explain.orphan.abstract'),
             });
         }
 
@@ -231,7 +287,7 @@ final class OrphanDetector
             return $this->verdict(
                 $symbol,
                 Orphan::CONFIDENCE_POSSIBLE,
-                'never referenced in code; name appears in a string literal (possible dynamic use)',
+                $this->strings->get('explain.orphan.inString'),
                 null,
                 $inString,
             );
@@ -257,6 +313,27 @@ final class OrphanDetector
             'rule'       => $rule,
             'evidence'   => $evidence,
         ];
+    }
+
+    /**
+     * Classes declared in the scan, indexed by short name — the lookup the
+     * convention rule needs to answer "does a class `X` exist for this
+     * `X<Suffix>`?". Built once per run rather than per symbol.
+     *
+     * @param list<Symbol> $definitions
+     * @return array<string, list<string>> short name => fqns declared under it
+     */
+    private function classesByName(array $definitions): array
+    {
+        $byName = [];
+
+        foreach ($definitions as $symbol) {
+            if ($symbol->kind === Symbol::KIND_CLASS) {
+                $byName[$symbol->name][] = $symbol->fqn;
+            }
+        }
+
+        return $byName;
     }
 
     /**
@@ -398,7 +475,7 @@ final class OrphanDetector
             $owners = [];
 
             foreach ($clone->files() as $file) {
-                $owner = $this->ownerAt($definitions, $file->name(), $file->startLine());
+                $owner = $this->ownerAt($definitions, $file->name, $file->startLine);
 
                 if ($owner !== null) {
                     $owners[] = $owner;

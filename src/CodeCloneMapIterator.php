@@ -2,9 +2,8 @@
 
 declare(strict_types=1);
 /*
- * This file is part of PHP Copy/Paste Detector (PHPCPD).
+ * This file is part of PhpcpdNext.
  *
- * (c) Sebastian Bergmann <sebastian@phpunit.de>
  * (c) 2026 Luciano Federico Pereira
  *
  * For the full copyright and license information, please view the LICENSE
@@ -13,54 +12,47 @@ declare(strict_types=1);
 
 namespace LucianoPereira\PhpcpdNext;
 
-use function array_reverse;
-use function count;
 use function usort;
 
-/** @implements \Iterator<int, CodeClone> */
-final class CodeCloneMapIterator implements \Iterator
+/**
+ * A clone map, read largest first.
+ *
+ * Size is the closest thing to importance that this tier can see. Everything
+ * that judges a finding — the confidence model, the strata, the ledger — lives
+ * in the presentation tier and reads what comes out of here, so the order it
+ * receives is the tiebreak it inherits for anything it rates equally.
+ *
+ * Which makes the ordering worth stating exactly: descending by line count, and
+ * among clones of the same size, the order the map recorded them in. PHP's sort
+ * has been stable since 8.0, so one descending comparison keeps discovery order
+ * among equals; sorting ascending and reversing gives every tie back to front,
+ * which is discovery order rewritten by an implementation detail of how the
+ * sort was spelled.
+ *
+ * An aggregate rather than a cursor. `Iterator` is five methods and a position
+ * that has to agree with itself across all of them, for an object that has the
+ * whole list in memory before anyone asks for the first element.
+ *
+ * @implements \IteratorAggregate<int, CodeClone>
+ */
+final class CodeCloneMapIterator implements \IteratorAggregate
 {
     /** @var list<CodeClone> */
-    private array $clones;
-    private int $position = 0;
+    private readonly array $clones;
 
     public function __construct(CodeCloneMap $clones)
     {
-        $this->clones = $clones->clones();
+        $ordered = $clones->clones();
 
-        usort(
-            $this->clones,
-            static function (CodeClone $a, CodeClone $b): int {
-                return $a->numberOfLines() <=> $b->numberOfLines();
-            },
-        );
+        usort($ordered, static fn(CodeClone $a, CodeClone $b): int => $b->numberOfLines() <=> $a->numberOfLines());
 
-        $this->clones = array_reverse($this->clones);
+        $this->clones = $ordered;
     }
 
+    /** @return \Generator<int, CodeClone> */
     #[\Override]
-    public function rewind(): void
+    public function getIterator(): \Generator
     {
-        $this->position = 0;
-    }
-    #[\Override]
-    public function valid(): bool
-    {
-        return $this->position < count($this->clones);
-    }
-    #[\Override]
-    public function key(): int
-    {
-        return $this->position;
-    }
-    #[\Override]
-    public function current(): CodeClone
-    {
-        return $this->clones[$this->position];
-    }
-    #[\Override]
-    public function next(): void
-    {
-        $this->position++;
+        yield from $this->clones;
     }
 }

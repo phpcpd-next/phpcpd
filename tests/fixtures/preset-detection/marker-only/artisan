@@ -1,0 +1,3 @@
+#!/usr/bin/env php
+<?php
+// A file named artisan, in a project that is not Laravel.

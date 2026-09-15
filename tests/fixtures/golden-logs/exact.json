@@ -1,0 +1,56 @@
+{
+    "tool": "phpcpd-next",
+    "version": "2.0.0",
+    "summary": {
+        "clones": 1,
+        "inconsistentClones": 0,
+        "duplicatedLines": 18,
+        "filesWithClones": 2,
+        "percentage": "32.14%",
+        "settled": 0,
+        "unfounded": 0,
+        "asserted": 1,
+        "demoted": 0,
+        "demotedBy": {
+            "table": 0,
+            "registration": 0
+        },
+        "acknowledged": 0,
+        "staleAcknowledgments": []
+    },
+    "clones": [
+        {
+            "lines": 26,
+            "tokens": 145,
+            "gapped": false,
+            "files": [
+                {
+                    "path": "tests/fixtures/with_clones/Alpha.php",
+                    "line": 3,
+                    "lines": 26,
+                    "tokens": 145
+                },
+                {
+                    "path": "tests/fixtures/with_clones/Beta.php",
+                    "line": 3,
+                    "lines": 26,
+                    "tokens": 145
+                }
+            ],
+            "stratum": "asserted",
+            "functions": [
+                "processUserRecords"
+            ],
+            "confidence": {
+                "logOdds": 2.4301317471773376,
+                "terms": {
+                    "prior": 0.11878353598996702,
+                    "sites": 0.1669708761425657,
+                    "scope": -0.04683894403817024,
+                    "lines": 0.5590002138932082,
+                    "literal": 1.6322160651897668
+                }
+            }
+        }
+    ]
+}

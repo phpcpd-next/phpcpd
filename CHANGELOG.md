@@ -1,425 +1,295 @@
 # Changelog
 
-All notable changes to **phpcpd-next** are documented here.
-
-Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)  
-Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
-
-> For the complete technical diff against upstream (every changed line with a *Why* explanation),
-> see [MODERNIZATION.md](MODERNIZATION.md).
-
----
-
-## [1.4.0] - 2026-08-23
-
-### Fixed — scanning a cache directory could turn a failing gate green
-
-Measured against a 63k-line project: pointing `--orphans` at the project root scanned
-`.phpstan.cache/` along with everything else, and reported **0 orphaned, exit 0**. The correct answer
-was **21 orphaned, exit 1**.
-
-A static-analysis result cache embeds the fully-qualified name of every class it analysed as a string
-literal, so it satisfied the reference check for 21 symbols that are genuinely unreferenced. It also
-made the run 52× slower and used 21× the memory (4m 0.7s / 1100 MB against 4.6s / 51 MB). The cost
-was visible; the wrong verdict was not, and nothing in the output hinted that a question had gone
-unanswered.
-
-- **Generated and cache trees are now excluded by default** — `vendor`, `node_modules`, `.git`,
-  `.phpstan.cache`, `.phpunit.cache`, `.php-cs-fixer.cache`, `.psalm-cache`, `.rector.cache`,
-  `var/cache`, `storage/framework`, `bootstrap/cache`, `build`, `dist`, `out`, `coverage`.
-  Disable with `--no-default-excludes`.
-- Defaults match whole path **segments**, unlike the substring-based `--exclude`, so a default named
-  `out` prunes `out/` and never `routes/`.
-- A file whose first 2 KB contains `@generated`, `Do not edit`, or `Auto-generated` is skipped
-  wherever it lives.
-- **Every run states its scope** — `Scanned 764 files (3 directories, 15 exclude patterns applied).`
-  A file count wildly out of step with the project is what makes a contaminated run obvious.
-
-### Fixed — the test guard blocked every runner but two
-
-`tests/_guard.php` detected direct execution by asking whether the entry point was *named* `phpunit`
-or `pest`. Every other runner — `paratest`, `infection`, a `phpdbg` run, an IDE run configuration,
-any PHPUnit-compatible runner — was classified as direct execution and killed at `require_once` time,
-before a single test ran. The runner then reported an empty or aborted suite rather than a reason,
-which is the failure mode hardest to read: nothing failed, so nothing looks wrong.
-
-The guard now compares `SCRIPT_FILENAME` with its own caller's path. Direct execution is exactly the
-case where those are the same file, which is checkable without knowing any runner's name — correct
-for every runner that exists and every one that does not exist yet. Same intent, same message. Both
-branches are covered by tests.
-
-### Added — suppression rules for structurally-explained symbols
-
-Every finding in the measured run was a false positive with a structural explanation. Six rules now
-recognise them. Each keys on a *structural* property — a guard statement, a namespace, a manifest
-entry, a fixture path — never a name pattern or a guess about intent:
-
-| Rule | Recognises |
-|------|------------|
-| `conditional` | Declared inside `if (!function_exists('x'))` and friends — a polyfill or shim, by definition declared for an external caller. |
-| `namespace` | Declared outside every `psr-4`/`psr-0` prefix the project's `composer.json` declares. |
-| `manifest` | An `autoload.files` entry point, or an FQN under `extra` (Laravel providers/aliases). |
-| `config` | Named in a `.neon`, `.yaml`, `.yml`, `.xml`, or `.dist` file. |
-| `fixtures` | Under a `Fixtures`/`Stubs` directory inside a test tree. |
-| `keep` / `entrypoint` / `planned` | Docblock tags and framework attributes (previously silent). |
-
-**A suppressed symbol is never dropped.** It moves to its own counted tier, always printed as a
-census by rule and listed in full with `--explain`. A rule that starts over-firing therefore shows up
-as a number that moved — a silent suppression would quietly turn a real orphan into no output at all,
-which is the same failure shape as the cache-directory bug above.
-
-`composer.json` is now read as a set of reference roots: `bin` entry points (conventionally
-extensionless, so a `.php` suffix filter never saw the one file where top-level wiring lives) are
-added to the scan, and a file with no recognised suffix is accepted when its `#!` line names php.
-
-### Added — `@phpcpd-planned`, and reasons on tags
-
-`@phpcpd-keep` asserts *this symbol is reachable, you just can't see it*. That is false for code
-written ahead of the work that will wire it, and marking such code with a keep tag means nothing
-prompts its removal later. `@phpcpd-planned` makes the opposite claim, and its symbols are reported
-as their own group — a staged-work inventory derived from the source rather than from a tracker.
-
-A `@phpcpd-planned` symbol that later becomes referenced is reported as a possible finding: the tag
-has served its purpose and should be deleted. `@phpcpd-keep` can never give that prompt.
-
-Both tags take a free-text reason, printed next to the symbol, so a suppression whose stated reason
-has gone stale becomes reviewable.
-
-### Added — clone suppression
-
-There was previously **no way to declare a duplication intentional**; the only remedy was `--exclude`
-on the whole file, which also hid the duplication worth fixing.
-
-```php
-// phpcpd-ignore-start ... // phpcpd-ignore-end
-/** @phpcpd-ignore-clone Dispatch table — one arm per block type, by design. */
-$x = $y; // phpcpd-ignore-line
-```
-
-A clone is dropped when any of its copies intersects a suppressed range. Markers are read only from
-files that took part in a clone, so an unmarked codebase pays nothing.
-
-### Added — `phpcpd.ini`
-
-Per-project settings whose keys **are the long option names**, so there is no second vocabulary and
-an option is configurable the day it ships. The file is found from the paths being scanned rather
-than from the working directory, so `phpcpd ../other-project/src` picks up that project's settings.
-
-Layered, each overriding the last: built-in defaults → `~/.config/phpcpd/phpcpd.ini` → project
-`phpcpd.ini` → command line. Single-valued keys are replaced by the closer layer; repeatable ones
-(`exclude`, `suffix`) append. `--config <file>` names one explicitly; `--no-config` ignores them all.
-Unknown keys and invalid values are rejected by name, exactly as the equivalent flag would be.
-
-### Added — `--show-config`
-
-Layering is only trustworthy if it can be inspected, and a setting no file mentions keeps a built-in
-default that appears in no file at all. `--show-config` prints every setting in force and names the
-layer that produced it, marking fallbacks with `(*)`. A repeatable setting names every layer that
-contributed, since those append rather than replace.
-
-### Fixed — the default run and `--orphans` could disagree about reachability
-
-Composer `bin` entry points were added to the scan in `--orphans` mode but not in the default run, so
-a class instantiated only from an extensionless console entry point could appear in the default run's
-advisory and not under `--orphans`. Entry points are now resolved once, for both modes.
-
-### Added — findings grouped by cause, with evidence
-
-The report repeated one of two sentences across every entry, so a reader had to re-derive each one by
-hand. Findings are now grouped by cause, which makes the group worth reading — the symbols nothing
-explains — visible instead of buried. A string-literal demotion cites **where** the name appears:
-
-```text
-→ never referenced in code; name appears in a string literal (possible dynamic use)
-  ⤷ name appears at src/Support/Registry.php:23
-```
-
-### Added — `--fail-on`, `--no-suppress`, `--explain`
-
-Rather than a flag per feature, three knobs named after what the report prints:
-
-- `--no-suppress=<rules>` turns rules off by name (or `all`). A disabled rule's symbols are judged
-  normally rather than skipped, which is what makes it a way to audit the rule itself.
-- `--fail-on=<tiers>` chooses what gates CI; `dead` alone by default. `--fail-on=dead,planned` makes
-  shipping staged, unwired components a conscious decision.
-- `--explain` lists suppressed symbols instead of only counting them.
-
-### Fixed — docblock tag matching was substring-based
-
-`str_contains($doc, '@api')` fired on prose: `Unlike @api classes, this one is internal` silently
-suppressed a real finding. Tags must now start a docblock line.
-
-### Changed
-
-- `OrphanResult` gained `suppressed()`, `planned()`, `tier()`, `entries()` and `fails()`.
-  `all()`, `definite()`, `possible()`, `count()` and `isEmpty()` speak only about findings, so a scan
-  that suppresses everything still reads as "no orphans".
-- `Orphans::detect()` accepts `noSuppress`, `failOn` and `defaultExcludes`.
-- `Symbol` replaces `$suppressed`/`$entrypoint` with `$rule`/`$ruleReason`; `Orphan` gained `$rule`
-  and `$evidence`.
-
-## [1.3.0] - 2026-08-18
-
-### Fixed — orphan detection: block-structure tracking and aliased imports
-
-Three unrelated PHP constructs desynced the symbol collector's context stack. A desynced stack
-silently corrupted every declaration after it in the same file: methods were recorded as global
-functions, and references inside skipped spans were lost — so live code was reported as a
-**definite orphan**. Because orphans ride along in the default scan as an advisory, this affected
-every run, not only `--orphans`.
-
-- **Closure capture clauses** — `function () use ($x) { ... }` was treated as an import statement and
-  skipped to the next `;`, which lands *inside* the closure body. Every reference in that span was
-  lost, and because the skip bypassed the closure's own `{`, the stack stayed shallow for the rest
-  of the file.
-- **Anonymous classes** — `new class { ... }` did not open a *type* body, so its methods were
-  recorded as global functions and a `use SomeTrait;` inside it was skipped instead of counted as a
-  trait reference.
-- **Curly-brace string interpolation** — `"{$var}"` popped a block level that was never pushed:
-  `token_get_all()` emits an array `T_CURLY_OPEN` token for the opening brace but a plain `}` string
-  token to close it.
-
-A fourth, separate cause was found while re-measuring the survivors:
-
-- **Aliased imports** — `use A\B\Original as Alias;` means the class is only ever written as
-  `Alias`, so `Original` was never counted and a class used solely under an alias was reported as a
-  definite orphan. Alias pairs are now resolved for single, comma-separated, grouped
-  (`use A\{B as C};`) and `use function ... as ...` forms. An import whose alias is never used still
-  counts nothing, so an unused import cannot mask a dead class.
-
-Measured against third-party sources: Laravel `Illuminate/Database` went from 2150 symbols scanned
-and 538 definite orphans to 249 and 13; `Illuminate/Support` from 494 and 144 to 147 and 21. The
-findings that disappeared were phantoms — `__clone` and other methods reported as dead *global
-functions* — plus the four grammar classes Laravel imports under an alias.
-
-### Changed — an unreferenced trait is a *possible* orphan, not a definite one
-
-A trait exists to be consumed by *other* classes, so a library ships traits for consumers that are
-never part of the scan — Laravel's `HasFactory` and `HasBuilder` are the archetype. Traits now join
-interfaces and abstract classes in the contract tier: still reported, but no longer failing the
-build. Nothing is hidden — the total finding count is unchanged, only the confidence tier moves.
-Across `laravel/framework` this shifts 13 findings, from 48 definite / 32 possible to 35 / 45.
-
-Symbols that a source-only scan genuinely cannot resolve — a service provider discovered through
-`composer.json`, a cast class named only in a downstream model — remain out of scope; `@api` /
-`@phpcpd-keep` are the escape hatch for those.
-
-Added `SymbolCollectorContextTest`, which pins each construct plus three regression guards (a
-brace-delimited namespace import must stay un-referenced; `::class` must not be read as a
-declaration; an unused aliased import must credit nothing), and a dogfooding invariant: phpcpd's own
-`src/` declares no global functions.
-
----
-
-## [1.2.0] - 2026-07-19
-
-### Added — orphan detection (dead code)
-
-- **Orphaned symbols** — top-level classes, interfaces, traits, enums, and global functions that
-  nothing in the scanned set references. Same token engine, same zero-dependency, no-parser design as
-  the clone side.
-- **Two run modes**: orphans **ride along in the default scan as an advisory** (reported, but only
-  clones set the exit code — safe for framework-heavy code where dynamic dispatch causes false
-  positives); **`--orphans`** runs orphans-only and *gates* CI (a definite orphan → non-zero exit,
-  exactly like a clone).
-- **Explains *why* something is dead**, not just *that* it is:
-  - **Whole-file "unwired"** — flags when every symbol declared in a file is itself an orphan (a
-    stronger delete signal than one dead class among live ones). This is phpunused's "unreferenced
-    file", done at symbol granularity.
-  - **"Superseded copy of ..."** — reuses the clone engine: an orphan whose body duplicates a *live*
-    symbol is annotated as the stale copy some refactor replaced but left behind. This is the
-    orphan × clone synergy unique to phpcpd-next.
-- **Two confidence tiers** (harvested from Psalm's `UnusedClass` / `PossiblyUnusedClass` split): a
-  **definite** orphan is referenced nowhere and drives the exit code; a **possible** orphan is either
-  a contract (interface / abstract class, which an out-of-tree package may implement) or a name that
-  only appears in a string literal (a candidate for `new $class` / DI-container lookup) — reported for
-  review, but does not fail the build.
-- **Entry-point awareness** (harvested from shipmonk/dead-code-detector's usage providers): classes
-  wired via framework attributes (`#[Route]`, `#[AsCommand]`, `#[AsEventListener]`, `#[Entity]`,
-  `#[Attribute]`, …) and `*Test` classes are recognised as reachable and never flagged.
-- **Suppression annotations**: `@api`, `@psalm-api`, `@phpstan-api`, `@phpcpd-keep`, and
-  `@phpcpd-ignore-orphan` in a symbol's docblock mark it intentionally public / kept.
-- **Better than a grep-based finder** (the phpunused niche, done right): because detection is
-  token-based, a name mentioned in a comment or the declaration itself no longer masks a real orphan,
-  and a name in a string is scored as a *weak* dynamic signal rather than a hard reference. Reference
-  detection is deliberately generous — over-counting hides a real orphan (safe), under-counting would
-  tell someone to delete live code (never).
-- **Headless API** `LucianoPereira\PhpcpdNext\Orphans::detect()`, mirroring `Phpcpd::detect()`, plus a
-  new `LucianoPereira\PhpcpdNext\Orphan\` subsystem (`SymbolCollector`, `OrphanDetector`, `Symbol`,
-  `Orphan`, `OrphanResult`, `OrphanTextReport`). Covered by `tests/OrphanDetectorTest.php` (10 tests).
-  Dogfooding the tool against `src/` immediately surfaced a genuinely dead exception class
-  (`MissingResultException`).
-
-## [1.1.0] - 2026-06-28
-
-### Added — integrations
-
-- **Headless mode** (`LucianoPereira\PhpcpdNext\Phpcpd::detect()`): a one-call, in-process API that
-  finds files, runs the same engine the CLI uses, and returns the raw `CodeCloneMap` — no banner, no
-  argv parsing, no file I/O. The CLI and all embedders now share a single detection core (`Engine`),
-  so they can never disagree about what a clone is.
-- **Framework presets** (`--preset=<name>`, and `preset:` in the headless API): a named bundle of
-  paths, suffixes, and excludes — pure configuration, no runtime dependency. Ships with a **`laravel`**
-  preset (scans `app routes database config`; skips `vendor`, `storage`, `bootstrap/cache`, `public`,
-  Blade views, and migration boilerplate). Explicit flags seed-then-override the preset. New presets
-  are a single `Preset` entry in `src/Presets.php`.
-- **PHPUnit integration** (`integration/phpunit/`): an `AssertNoDuplication` trait and a
-  `DuplicationConstraint` that turn copy/paste detection into a regression test, with offending
-  locations (and `[inconsistent]` flags) printed on failure. Shipped in the **production**
-  autoloader under `LucianoPereira\PhpcpdNext\PHPUnit\`, so it works for any project that requires
-  phpcpd-next (even as `--dev`). phpcpd-next dogfoods it — `SelfDryTest` now keeps `src/` clean
-  through this exact trait.
-- **Laravel via Artisan**: documented (no extra package) by wiring the headless API into a command.
-
-### Packaging & distribution
-
-- **Published to Packagist** as `phpcpd-next/phpcpd`: `composer require --dev phpcpd-next/phpcpd`.
-- `composer.json`: added `type`, `keywords`, and a `suggest` for `phpunit/phpunit` (the optional
-  PHPUnit integration); moved the `PHPUnit\` namespace into the production autoloader.
-- Added `.gitattributes` with `export-ignore` rules so the dist tarball ships only runtime code
-  (`src/`, `integration/`, the binary), not tests, benchmarks, or tool configs.
-
-### Tooling
-
-- Committed a `.php-cs-fixer.dist.php` codifying the existing code style, so `composer lint` /
-  `composer check` run non-interactively.
-
-### Documentation
-
-- Reworked the README to document the **full** feature surface accurately: the real default
-  (Rabin-Karp + TokenBag) and `--rk`, all four output formats, the complete option reference split
-  into stable vs. advanced/research flags, presets, headless mode, and the PHPUnit integration.
-
-## [1.0.0] - 2026-06-27
-
-### Performance
-
-- **Banded edit-distance DP in the suffix-tree engine.** Profiling showed the approximate-matching
-  DP — not construction — dominated `findClones` and grew super-linearly with `--edit-distance`. Since
-  a cell `(i,j)` with `|i−j| > maxErrors` can never lie on a sub-threshold path, the DP is restricted
-  to the diagonal band of width `2·maxErrors+1` (Ukkonen cutoff), turning the per-clone cost from
-  `O(L²)` to `O(L·maxErrors)`. Measured **~3.5× faster** at every edit distance on a Firefly III slice,
-  with **byte-identical** clone output.
-
-### Fixed
-
-- **Degenerate zero-line clones** are no longer reported by the suffix-tree engine. A clone whose
-  in-file span collapsed to zero lines (its matched run lay almost entirely beyond a file boundary) was
-  emitted as meaningless `(0 lines)` noise; such clones are now skipped.
-
-### Added — detection
-
-- **Type-2 detection on every engine** via `--fuzzy`: a shared `TokenNormalizer` abstracts
-  identifiers and literals to type classes (previously `--fuzzy` only touched variables, and only
-  in the default engine — the suffix tree had no Type-2 at all).
-- **Inconsistent-clone reporting**: gapped (Type-3) clones are distinguished from exact copies
-  (`CodeClone::isGapped()`), marked `[inconsistent]` in console output and surfaced as `warning`
-  severity in SARIF.
-- **Type-aware edit weights** in the suffix-tree engine: a changed control keyword (`if`→`while`)
-  costs more of the `--edit-distance` budget than a renamed identifier.
-- **New `tokenbag` engine** (`--algorithm=tokenbag`): a SourcererCC-style order-invariant token
-  bag + inverted index that detects **reordered** clones the contiguous engines miss. Threshold
-  via `--min-similarity` (default 0.7).
-
-### Added — CI
-
-- **Incremental result cache** (`--cache` / `--cache-dir`): keyed by a fingerprint of the
-  configuration and a manifest of file hashes; a re-run on unchanged files skips detection
-  entirely and prints `(cache hit)`. Designed to be mounted with `actions/cache`.
-- **Per-file incremental index** (`--incremental`, Rabin–Karp only): Hummel-style index that
-  persists each file's tokenization and re-tokenizes **only the files that changed**, replaying the
-  rest from the index. Finer-grained than `--cache` (one edit no longer invalidates the whole run)
-  and provably equivalent to a full scan. Prints `(incremental index: N reused, M scanned)`.
-
-### Added — output
-
-- **JSON** report (`--log-json`) and **SARIF 2.1.0** report (`--log-sarif`, for GitHub Code
-  Scanning), alongside the existing PMD-CPD XML. A shared `Log\Logger` contract unifies them.
-
-### Changed
-
-- **Zero runtime Composer dependencies**: `sebastian/version`, `sebastian/cli-parser`,
-  `phpunit/php-file-iterator`, and `phpunit/php-timer` were removed — replaced with owned,
-  improved code (a declarative self-documenting CLI parser with value validation; a file finder
-  that prunes excluded directories and supports glob excludes; a timer that reports throughput).
-- Namespace migrated to `LucianoPereira\PhpcpdNext`; autoloading switched from classmap to PSR-4.
-- PMD XML logger simplified to use DOM-native escaping.
-
----
-
-## [0.1.0] — 2026-06-26
-
-First release of **phpcpd-next**. Picks up where Sebastian Bergmann's archived
-`sebastianbergmann/phpcpd` (7.0-dev) left off and brings the tool forward to PHP 8.5.
-
-### Platform
-
-- Requires PHP **≥ 8.5** (upstream required ≥ 8.1)
-- `composer.json` platform locked to `8.5.0`
-
-### Fixed
-
-- **`sebastian/version` v4 API break** — `getVersion()` renamed to `asString()` in v4;
-  the banner was crashing silently on import.
-- **`empty($object)` always false** — `SuffixTreeStrategy` used `empty($this->result)` on
-  a `CodeCloneMap` object; `empty()` on any object always returns `false`. Fixed to
-  `=== null`.
-- **Division by zero** — `CodeCloneMap::averageSize()` divided by `count()` without
-  guarding the empty case. Fixed with an early `return 0.0`.
-- **`current()` returning `false`** — `CodeClone::lines()` called `current()` on an
-  associative array and used the result as a `CodeCloneFile`; `current()` returns `false`
-  on an empty array. Replaced with `array_values($this->files)[0]` which is guaranteed safe
-  after the existing non-empty guard.
-- **`file_get_contents()` false return** — both `DefaultStrategy` and `SuffixTreeStrategy`
-  passed the raw `string|false` return directly into tokenisation. Added `if ($buffer === false) { return; }` guards.
-- **`file()` returning `false`** — `CodeClone::lines()` called `file()` without checking
-  the return. Fixed with `?: []` fallback.
-- **`mb_convert_encoding()` returning `false`** — `AbstractXmlLogger` did not check the
-  return of `mb_convert_encoding()`, which returns `false` on encoding failure. Fixed with
-  an explicit false-check and fallback to the original string.
-- **`preg_replace()` returning `null`** — `AbstractXmlLogger::toUtf8String()` could return
-  `string|null` from `preg_replace`. Fixed with `?? $string` fallback.
-
-### Changed
-
-- **Banner** updated to credit both the original author and the fork:
-  `phpcpd 0.1.0 by Luciano Federico Pereira based on phpcpd 7.0-dev by Sebastian Bergmann.`
-
-### Modernised (PHP 8.0 – 8.5)
-
-- `readonly class` applied to `Arguments`, `CodeCloneFile`, `StrategyConfiguration`,
-  `CloneInfo` — immutability enforced at the class level.
-- Constructor property promotion on all eligible classes — eliminates boilerplate
-  `$this->x = $x` assignments.
-- `#[\Override]` attribute on every method that implements or overrides a contract.
-- Typed class constants (`private const string`, `private const int`) throughout.
-- `foreach ($array as $item)` replaces `foreach (array_keys($array) as $k)` where the key
-  was never used.
-- `$result === null` replaces `empty($result)` wherever the variable is an object or
-  nullable type.
-
-### Improved
-
-- **Duplicate code eliminated** — `DefaultStrategy::processFile()` contained two identical
-  17-line blocks that built and recorded a `CodeClone`. Extracted to
-  `recordCloneIfValid()`. Running the tool on its own source now reports zero clones.
-- PHPDoc generics (`list<T>`, `@template`, `@implements`) on all collection classes.
-
-### Toolchain (new files)
-
-- **PHPStan level 9** — zero errors. `phpstan.neon` + `phpstan-stubs.php` for the
-  untyped `sebastian/cli-parser` return.
-- **PHP-CS-Fixer** — `@PER-CS2.0` + risky fixers (`declare_strict_types`,
-  `native_function_invocation`, `strict_param`, …).
-- **Rector** — `php85` set, `CODE_QUALITY`, `TYPE_DECLARATION`.
-- **PHPUnit 12** — `phpunit.xml` wired; test writing is the next milestone.
-- **GitHub Actions CI** — `audit → lint → analyse → test` on every push.
-- **`.editorconfig`** — consistent whitespace before any tool runs.
-- **Composer scripts** — `lint`, `lint:fix`, `analyse`, `test`, `check`.
-
-[1.4.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.4
-[1.3.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.3
-[1.2.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.2
-[1.1.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.1
-[1.0.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v1.0
-[0.1.0]: https://github.com/phpcpd-next/phpcpd/releases/tag/v0.1
+Every release of phpcpd-next, as it ships. Each entry is one change, in the order the changes landed. The reasoning behind every entry, with the measurements it rests on, is kept in full in docs/release-notes.md.
+
+## Unreleased
+
+- Fixed the token bag being blind to every operator. It bagged only the tokens `token_get_all()` returns as arrays, so `;`, `(`, `=` and every arithmetic and comparison operator never reached it — about half the program text, and the half that says what the code does. `$x = $a + $b;` and `$x = $a - $b;` produced byte-identical bags. `DefaultStrategy` records fixing exactly this on its own side a release ago; the bag never got it, so the two arms of the shipped default disagreed about what a token is. Measured on the injected-clone study, the bag's recall over the guaranteed region goes from 82.8% to 94.8% against Rabin-Karp's 98.3%, closing the gap between the arms from 15.5 points to 3.5
+- Fixed the token count reported for a token-bag finding being the stopword-filtered overlap — the quantity the similarity decision is made on, fixed by document frequency across whatever else was scanned, and therefore not a property of the clone at all. The same two methods reported a different size depending on the rest of the run. It is printed as `tokens` by the PMD, SARIF and JSON writers; measured against the tokens the blocks actually span it ran to a median of 0.17 on php-parser, **0.04** on symfony-console and 0.34 on symfony/string — a 500-token body reported at twenty. It is now the unfiltered intersection, and each occurrence carries its own size
+- Fixed `--min-tokens` meaning one thing to Rabin-Karp and another to the token bag. Rabin-Karp gives a floor on the duplication by construction, its match *being* a run of that length; the bag gated the two blocks and not what they share, so a pair could clear the floor twice over and share far less. On symfony-console it reported `Table.php`, `ConsoleLoggerTest.php` and `InputTest.php` as one clone on **61 shared tokens under a floor of 100**. Now gated on the shared multiset, which is implied by — and so subsumes — the per-block gate
+- Fixed a token-bag extent claiming a line the matcher never compared. The bag is reset at the opening brace, so the signature is not in it, but the start line came from the `function` keyword: 38 of 38 sites on symfony-console, 6 of 6 on symfony/string. The extent is now the first and last token that went into the bag
+- Changed the token bag never to take the normalized view, in any code path. A bag is order-free, and normalization folds every identifier to `ID` and every literal to `STR` or `NUM`; together those erase what tells one data table from another, so two tables of the same shape become the same multiset. Order is what keeps the contiguous matcher's tables apart and the bag has thrown order away. Measured by two blind raters at Cohen's κ 0.797 on symfony/string, where the data tables live: the raw view scores 0.857 and 0.857, the normalized view **0.200 and 0.133** — twelve or thirteen of fifteen false, and every one of them asserted, the `table` stratum having demoted none. Removed rather than defaulted away from, because a configuration measured at 0.13 is not a choice a caller should be able to make by accident. The cost is the clone that is both renamed and reordered
+- Fixed the token bag reporting its findings as **exact** clones. Every one was built with `gapped: false`, which is the flag all four writers read to print *Exact* — SARIF `duplicate-code` at level note, JSON `gapped: false`, the console with no marker. A bag establishes that two blocks hold the same material and says nothing whatever about the sequence: asked whether their sites agree in extent and order, 80 of symfony-console's 85 bag classes do not, nor should they. `CodeClone` already stated the contract — "a reordered clone is never an exact copy either" — and the unified engine has always set both flags together. They are reported as `[reordered]` rather than as inconsistent, because those are different claims: `[inconsistent]` says the copies diverge, one patched and its sibling not, and `[reordered]` says the material is all present in another order. Nothing had ever read `isReordered()`, so the flag existed and no format showed it; the console marks it, SARIF gains a declared `reordered-clone` rule, and the heading counts the two separately
+- Fixed a Rabin-Karp occurrence naming a first copy it was never matched against. A run's anchor is the window table's entry for its *first* window, so the hash guarantees the first `minTokens` tokens agree and says nothing past that; the run then continues over windows registered elsewhere, and the file-change guard in `scan()` catches a different registrant *file* but not a different *offset in the same file*. Every divergence measured on php-parser began past the floor — at token 129, 208, 156 and 115 of runs of 245, 314, 166 and 146. The entry is now checked against the run it claims to describe, which is one comparison over a flat signature, and where it fails the anchor is withheld and the occurrence falls back to its line-derived span. 4 of php-parser's two-site findings and 1 of symfony/string's 28 named a partner agreeing at 0.06 where an exact match agrees at 1.00; both are now zero, and no finding is lost
+- Fixed a clone class naming sites that nothing had compared to one another. Classes are assembled from candidate pairs, so a site can be seated beside others it was never checked against: `Standard.php:444-467`, `:479-500` and `:510-533` were reported as one **exact** class in which no pair of the three agreed — 0 of 166 tokens, 0 of 166, and 17 of 166 — while each had a real duplicate elsewhere in the same file, at tokens 3905, 3836 and 3873. That is not a misstated extent; the finding was invented. Every site is now checked against the one its class leads with, and a class left with fewer than two agreeing sites is dropped rather than shrunk. Only classes claiming exactness are read, since a gapped clone's copies differ by construction and a reordered clone's differ in order by definition. The default loses one site on php-parser and one on symfony-console and no findings; `--algorithm=unified` drops 72 to 70 on php-parser, which is the two unfounded classes
+- Fixed the duplicated-line total surviving the findings it was charged for. Coverage is accumulated as clones arrive and was never charged again when one was removed, and `settle()` removes several: measured at the shipped default it dropped 4 of php-parser's 41 findings, 14 of symfony/string's 55 and 9 of symfony-console's 97, and the totals did not move by a line. The percentage the report prints is built on that number. Coverage is now recomputed from the survivors — rebuilt rather than subtracted, because the ranges are merged as they are charged and unpicking one clone's share of a line is not a subtraction anyone can do correctly. php-parser 925 lines to 883, symfony/string 2,479 to 2,351, symfony-console 1,747 to 1,677
+- Added what a run removed to the report. A run that scans and then settles is doing two things — finding duplication and deciding which readings of it to keep — and a reader shown only the survivors cannot tell a corpus with little duplication from one whose readings collapsed into each other. Readings dropped as already described and findings dropped as unverified are counted on their own lines and in the JSON summary, each printed only when it is non-zero. Both counts now survive the passes that rebuild the map, which suppression and the coherence clamp both do
+- Fixed a function body being recorded as starting at its opening brace and ending before its closing one — asymmetric, and contrary to what `Facts\RegionStructure` promises a paragraph above the code. A match runs from the first token *inside* the body, so every site in every corpus sat exactly one token after the recorded start: 239 of symfony-console's 368 sites at exactly `+1`, 243 ending at exactly `0`. That constant was being read as drift, and reported as "0% of sites start at a function-body start". Against the corrected boundary it is 20% on php-parser, 26% on symfony/string and 60% on symfony-console, and the snap the project refused costs 33.5–69.5% outward and 25.4–33.6% inward rather than the 37% and 44% recorded. No detection changes
+- Changed a reported extent to be stated in whole source lines. A match is made in tokens and printed in lines, and the two disagree at the edges: a boundary fell mid-line on 61% of php-parser's sites, 34% of symfony/string's and 13% of symfony-console's, so the report *claimed* a range it had not matched while *displaying* one it had. The extent is pulled inward to the lines it wholly covers, which never claims a token that did not match and is the direction that separates two runs abutting on one line — the residue where a token-disjoint pair shares the single line their boundary sits on, which was the whole of it on three corpora. `table_rows_a.php` was reported as `24-28` and `28-32`, both claiming line 28, and is now `25-27` and `29-31`. Costs 0.7–3.0% of matched tokens, and the gate stays on the run the engine matched so no finding is lost to a presentation decision
+- Changed the two normalization booleans into one value. `fuzzy` and `typeAnchored` were four combinations for three behaviours, and the fourth was a silent duplicate: normalization ran when either was set while the normalizer read only the anchor, so `fuzzy` did nothing whenever type-anchoring was on — which is the default. Measured on three corpora, `--type-anchored` and `--raw --type-anchored` produced byte-identical clone sets, Jaccard 1.00 every time. `bench/lib.php` carried a guard refusing to name one flag without the other, written after naming exactly one silently inverted meaning when the default moved; the guard is gone because the mistake is now unrepresentable. The three CLI flags are unchanged and each sets one value
+- Added `--min-confidence` and `--hidden`. Every finding already carried a confidence, its strata and an acknowledgment, and nothing consumed them — the presentation tier could label but not filter. The threshold partitions the report into shown and held back and removes nothing: the whole set is still counted, still stratified, and still gates the exit code, and the report always says how many were held back and that `--hidden` lists them. Unset by default, which is the M5 pre-commitment standing rather than being overturned: no rule derivable from this project's labels reaches the 0.80 bar by *silencing*, which is an argument against the tool hiding unasked rather than against a reader choosing to. No threshold is recommended, because none has been calibrated against a rated pool
+
+## v2.0 — September 13, 2026
+
+- Changed identifier normalization to be the default, anchored on type keywords. Raw matching finds a copy only where the names agree too, which is a claim about spelling rather than about behaviour: measured through the CLI, php-parser goes from 8 clones to 41, symfony-console from 22 to 98 and phpunit from 192 to 639, for +0.37s, +0.44s and +1.0s. `--raw` restores exact-text matching and `--fuzzy` now selects the name-blind variant — normalization without the type anchor — which the anchor dominates. The anchor is the paper's E2 result and reproduces locally in shape rather than in size: on php-parser it drops one finding and adds none, and the one it drops is false, pairing `initializeRemovalMap()` against `initializeInsertionMap()`, two different tables of `\T_*` constants that name-blind fuzzing conflates because every one of those tokens normalizes alike. On the larger corpora the same anchor drops 13 of symfony-console's 111 and 58 of phpunit's 697. The precision audit that supports this default was pooled before the self-overlap fix below and its own agreement statistic failed its bar — Cohen's κ 0.484 against the 0.7 the brief requires — so `Settings::$fuzzy` records both rather than quoting the figures forward
+- Fixed normalization reporting a stretch of code as a duplicate of itself. A run of near-identical members — a dozen one-line accessors, a flat list of constants — has no two identical tokens under raw matching, because every method name and every key differs; normalized, the names and keys are erased and what is left is one token sequence repeating with a fixed period, so the run matches itself shifted by a period and the matcher extends that match as far as the repetition goes. php-parser reported `NodeAbstract.php:15-96` as a clone of `25-107` — 72 lines of overlap, asserted at +1.72 — and 16 of its 35 findings at the normalized default were this shape, 10 of them asserted. Rabin-Karp now applies the rule `AnchorSet::extend()` has always applied and its comment always stated: two copies inside one file may together be no longer than the distance between them. The token bag needs nothing, its blocks being function bodies closed at brace depth zero, which cannot overlap — argued and then checked. Truncating rather than dropping is the point: the repetition among those accessors is real duplication and it was the extent that was false, so one period is what is reported, and where one period falls under `--min-tokens` the finding goes with it
+- Fixed an occurrence claiming tokens its file does not have. The matcher records where a run's earlier copy began by looking the window's hash up in a table, and that entry belongs to whichever occurrence registered the window first — in a file of repeated blocks routinely a later, unrelated one, a hazard the code has always described in a comment and that normalization is what makes reachable, since turning a table's rows into windows that hash alike is exactly what it does. In `tests/fixtures/strata` the entry pointed at token 49 where the matching rows begin at 37, one table row late, so a 229-token run from a 275-token file ended at 277. Nothing crashed: the presentation layer asked whether tokens past the end of the file sat inside an array literal, was told no, and the pair silently lost the `table` demotion that fixture exists to prove. What is wrong is the anchor rather than the length, and the first file's line map has already been read at that point, so the check is free. Dropping the finding was measured first and is too blunt — it cost the table pair outright, and the two tables do share thirteen rows — so only the anchor is withheld and the occurrence falls back to the line-derived span kept for strategies that record no token position. Measured at `--min-tokens=30`: no such site under raw matching on php-parser or symfony-console, one in 1,719 and two in 2,872 under normalization; clone counts are unchanged at 619 and 1,163
+- Fixed three bench files reading a signature five bytes at a time after the per-token hash widened to eight. A signature is a flat byte string, so a stale stride does not fail: it reads each token three bytes short of where the token starts, and two sides of a comparison drift apart by three bytes for every token their start indices differ by. Where both sides start at the same index they stay in step and the answer looks right, which is why the gates kept passing — and `check-superset.php`'s adjudicator, documented as "the number of tokens two locations actually share, computed here, trusting neither engine", was trusting nothing at all on exactly the pairs it exists to adjudicate. The recall gate's guaranteed region holds 102 pairs read at the right stride and 17 at the wrong one, so it was passing on a sixth of the population it claims to cover. The width now comes from `FileTokens::token()` itself and cannot go stale again; the same adjudicator also gained the non-overlap rule, having certified 154 tokens "actually shared" for a pair whose two copies sit two tokens apart
+- Changed `bcb_config()` to follow the shipped default instead of pinning normalization off. `check-superset.php`'s `--baseline=default`, `check-walltime.php`'s default row and all thirty reporter goldens were measuring a mode no user runs. The goldens are recaptured against what ships, and both things that moved are accounted for: the extents that now open at line 3 are true matches, because comments are ignored tokens and the preamble reduces to `declare(strict_types=1)` plus a class name that normalizes alike, and the table pair keeps the `table` demotion it has under raw
+- Changed `--show-config` to report the settings an option writes but is not named after. `--fuzzy` selects name-blind normalization, which means turning the type anchor off, and `--raw` turns both halves off; only the option's own name is parsed from the command line, so the table printed `fuzzy true` and said nothing about the anchor that went with it. It began to matter when the anchor became a default — while type-anchoring defaulted to off, `--fuzzy` left it where it already was and there was nothing to report
+- Fixed the merged default pipeline never settling its map, so the one pipeline that ships as the default reported a self-similar run once per period while every single engine reported it once. `mergeFrom()` drops a clone another already *describes*, which is half of settling; the region collapse lives in `settle()` and the merged path did not call it. The arithmetic gave it away: merging takes a union and drops duplicates, so it cannot report more than its halves report between them — and on phpunit the default reported 312 clones where Rabin-Karp finds 170 and the token bag 37. It now reports 193, with duplicated lines unchanged at 10,256, and merged ≤ rk + tokenbag holds on all five corpora that have both
+- Fixed every bench harness built on `bcb_detect()` measuring maps the shipped tool never produces. It assembles a map through `Detector` directly rather than through `Engine::detect()`, so it never settled one — and ten harnesses are built on it, the goldens, the recall study and the precision audit among them. The precision worksheet was therefore pooled from findings holding duplicate readings of one region, which the CLI removes: the php-parser pool drops from 84 findings to 79 and unified from 84 clones to 72, which is what `phpcpd --algorithm=unified` prints. A benchmark that measures something the user never sees is measuring the wrong thing
+- Fixed a clone class naming two overlapping ranges in one file, which tells a reader a region duplicates itself. The candidate loop already refuses such a candidate — "two ranges that merely overlap describe one region matched against a shifted view of itself" — but a class is assembled from many candidates and site identity is a question about 80% overlap (ruling G), so two ranges overlapping by less than that stayed two sites. On php-parser they missed the bar by a hair: 98 tokens shared where 100 were needed, 119 where 132 were, 92 where 107 were. They are merged into the region they describe rather than one being dropped — dropping was measured first and cost `MetadataTest`'s class 16 of its 88 sites and turned 226 of the token bag's own pairs into misses. Any overlap at all merges, which is a membership test rather than a second fraction to tune, and containment falls out of it. Same-file overlapping sites go from 5, 22 and 13 on php-parser, symfony-console and phpunit's Metadata to zero on all three under the raw matching that was the default when this was measured, and are still zero there; normalization, made the default later in this release, reopens a residue this fix does not reach — two sites on php-parser and fourteen on symfony-console that share a single boundary line, because the non-overlap rule is enforced in tokens and a boundary token can fall mid-line, and five on phpunit that genuinely intersect because a clone class assembled from many candidates can seat a third site against the two this rule constrained; the small drop in duplicated lines is a correction, since two overlapping sites were charged as two occurrences of a region that is one
+- Added the functions a finding's range lands in, to the text report and to JSON. A reported extent is a token run and a token run does not begin or end where a function does: measured against `Facts\RegionStructure::functions()`, 0% of php-parser's sites start at a function-body start and 2% end at one, so essentially every finding begins and ends partway through a function and a line range alone tells a reader nothing. Snapping the extent to those boundaries was measured and refused — outward invents 37% of tokens that never matched, inward drops 44% that did and empties 35 of 203 sites — so the range stays exactly what matched and the report says where it lands. `NodeDumper.php:210-234` now reads as `dumpEnum, dumpIncludeType, dumpUseType, dumpIntKind`, and the `MetadataTest.php:5716` site that this release spent a day on reads as `testCanBeRetry`. Three names and then a count, because a span through a run of near-identical methods can touch ninety
+- Changed the twenty-seven translations to carry every user-facing string. Six keys had no translation anywhere — three of them opened in this release, when the English behind `coverage` and the incremental help text changed and `literals` was added — and fell back to English per key, which is the documented behaviour and not a failure, but is not a translation either. Each is now written in each locale's own existing wording for the same concepts rather than invented: every file reads 165 of 165
+- Fixed a run of near-identical blocks being reported once per multiple of its period. A region of period D matches itself at D, at 2D, at 3D, so phpunit's `MetadataTest.php` — 83 near-identical test methods — produced 33 findings naming 240 sites at granularities from 67 lines to 1,114, every one of them the same fact with the blocks glued together differently. A self-similar run is one finding: the region is pinned by the finest reading's own extremes, from where its first block starts to where its last block ends, and a coarser reading living inside those bounds is dropped. That file now reports 10 findings with its 85-site fundamental intact, and the subdirectory 94 to 43. The finest reading is what survives, which is the opposite of the containment rule tried first and rejected: that one dropped 9 rated true positives and no false positive, because the false positives are standalone declaration surfaces contained in nothing. Coverage totals do not move, and php-parser is untouched at 73 findings
+- Fixed `IncrementalIndex` returning a map the plain engine would have settled. It assembles its own map rather than going through `Engine::detect()`, so the indexed run reported 18 clones where the plain run reported 17 — caught by `bench/check-incremental.php`, which exists for exactly this: an index may skip work and never change the answer
+- Fixed a single-engine run never settling its map. `dropClonesSeenTwice()` was reachable only through `mergeFrom()`, so the merged default pipeline dropped a clone describing a region another already described and `--algorithm=unified`, which never goes through the merge, did not — the report showed the same duplication twice by the project's own definition, 9 findings of php-parser's 82 and 43 of symfony-console's 227. The docblock's claim that merging produces these and "neither produces them alone" was the wrong way round, and is corrected. Coverage totals do not move: duplicated lines stay 3,097 and 6,739, because a contained finding never un-covers a line the container still holds
+- Fixed the raw view treating a qualified name as a different name. `IGNORED_TOKENS` drops `T_NS_SEPARATOR` so that where a name comes from does not decide whether two files match, and on PHP 8 that entry is dead — zero occurrences in 196,795 tokens of php-parser and zero in this project's own `src/` — because the separator stopped being a token of its own: `\App\Support\Money` arrives whole as one `T_NAME_FULLY_QUALIFIED` and the qualifier rides along inside it. So `\App\Support\Money::of($x)` did not match `Money::of($x)` and the stated intent had quietly stopped applying to most of modern PHP. A qualified name now folds to the name it ends in, typed as the plain identifier it would have been — the same oversight `TokenNormalizer` already records and fixes for the normalized view, which the raw view never got. Token counts are untouched, so the facts layer and the matcher still agree on what a token is
+- Fixed the report saying nothing when two copies carry different constants. The unified engine matches under a normalized view where a string folds to `STR` and a number to `NUM` — deliberate, and what lets it see a Type-2 clone — but the finding then arrived with no divergences and `inconsistent` unset, while `CodeClone::isGapped()` promises exactly this information: "copies that share a skeleton but diverge… one copy patched, the sibling not". Two files differing only in an error message, a threshold of 100 against 5000, and a multiplier of 2 against 7 were reported as a clone with nothing to say about any of it. On php-parser, 23 of the 25 clones reported as *not* inconsistent had copies that differ, every one of them in a literal. The count is now measured and printed — `[literals differ (3)]` in the text report, `literalDivergences` in JSON when non-zero, and only for a clone with no gaps, because comparing two occurrences position by position is sound exactly when nothing has been skipped in either — beside `inconsistent` rather than folded into it, because a structural gap and a swapped constant are different things and the second leaves no gap behind. Detection is unchanged; 42 of php-parser's 78 findings now carry the signal, and the project's own Type-2 fixture turns out to differ in five string literals, which its comment always said and the tool never did
+- Fixed `composer check` passing while the report goldens were broken. Thirty golden files pin every reporter's output across six scenarios and five formats, and the only thing checking them was a bench script nobody's `check` ran — so any reporter could change its output and the project's own gate stayed green; phpunit guarded the help text and nothing else. `check` now runs `logs:check` (0.09s, no corpus) and the harness self-test, which was already defined as `bench:verify` and simply never wired in. Fifty-four more checks for about two and a half seconds, verified by changing one reporter string: the gate names every golden it broke and exits non-zero
+- Fixed `--help` saying the incremental index is "rabin-karp only" when the code has accepted `unified` as well; measured on symfony-console, the two agree exactly — 234 clones either way. The claim was stale rather than aspirational, and a user reading it would have left the option switched off for the engine that needs it most
+- Fixed `bench/check-locales.php` being unable to see a translation of a sentence that no longer exists. All four of its checks ask about shape — unknown keys, non-string leaves, placeholder drift, copied files — and none of them reads English, so when the coverage sentence changed meaning the key kept its name and both its placeholders and twenty-seven translations went on asserting the old one with the gate green. The English text is now pinned by content hash per key, and a translation of a key whose English has moved since fails as STALE ENGLISH until it is re-translated or dropped; `--pin` records the new baseline. It is `bench/pin-snapshot.php`'s bargain at the scale of a sentence, and the pin does not ship
+- Changed the 27 translations to drop `report.clones.coverage` rather than keep a rendering of the sentence it no longer translates. A missing key is legal and falls back to English per key, so a reader in Ukrainian now sees something true in English instead of something false in Ukrainian, and the gate reports the key as not yet translated
+- Fixed comments and blank lines being counted as duplicated. A clone is measured in tokens and reported as a line range, and the range runs from the first matched token to the last, so every docblock and blank line between them was charged to the total without ever having been compared. On `php-parser/lib/PhpParser/Builder/Method.php:20-80` that was 40 lines in 61, against a copy reading "Makes the **property** public" where this one reads "method" and carrying four `@var` lines this one has not got — text that is not shared, counted as shared. The coverage total now counts the lines holding a token the matchers can see, which moves the headline figure by a fifth to a third (php-parser 3,664 duplicated lines to 2,544; symfony-console 8,938 to 6,857) and moves it for the Rabin-Karp default by more than for the unified engine, not less. Extents are untouched: a clone still begins and ends where the matcher put it and the excerpt stays contiguous source; only the arithmetic changes. The ignored-token set now lives in one place, `Util\CodeLines`, because two questions ask it — what to match on and what to count — and two copies could drift into a tool that matches one thing and reports another
+- Changed the coverage sentence from ":percentage of scanned lines (:lines) lie inside at least one clone" to "… are duplicated code", because a comment lying inside a clone is no longer counted and the old wording described a larger set than the figure measures
+- Fixed every single-character token that opens a line being dated to the line above it. `token_get_all()` dates a token by where it **begins**, so the whitespace holding a newline is dated to the line it starts on, and a `}` alone on the next line inherited that number — a clone starting on one was reported a line early, and the extent tests had been pinned to the wrong answer. The tokenizer now carries a cursor advanced past the newlines a token contains, and `CloneExtentTest` derives its spans from the fixtures rather than from two literals, because the sibling assertion could not catch it: the two candidate last lines are `    }` and `}` and both trim to the same string
+- Fixed `DefaultStrategy::scan()` crediting a whole run to the file that registered its **first** window. The hash table holds one registrant per window and consecutive windows can have been registered by different files, so a run drifting across registrants was reported as one contiguous match against a file it did not fully match: four of PHPUnit's baseline fixtures, two pairs differing by five `@` error-suppression operators, came back as one 221-token *exact* class over files that share 111 tokens. The run now closes when the registrant changes. It was invisible until the operator fix made `@` a token — before that every window had the same registrant. Extents can now be short rather than wrong, which is the sound direction; the maximal reading needs per-file postings and is deferred
+- Fixed ruling 6's adjudication being switched off for Rabin-Karp in `bench/check-superset.php`. A bag measure genuinely has no standing over a contiguous claim, but that had become *no* adjudication, so a Rabin-Karp baseline location was unfalsifiable by construction and unified was charged for not reproducing claims the source did not support. The location half now uses the instrument the pairs half already trusts — the longest run the two locations really share — and sets a location aside only when that recompute finds the claim shares nothing at all at its own coordinates
+- Fixed the machine line printed beside every wall-clock number naming only the current clock, which tells a reader on another computer nothing: it now names the CPU and the maximum, `clock=4189/4200MHz`. The maximum was already read — the throttling guard judges the ratio against it — and simply never published
+- Fixed every bench harness reading a corpus argument as a path and reporting a name it could not resolve as an empty *result*: `php bench/run-recall.php php-parser` scanned nothing and exited FAIL with "0 pairs inside the guarantee", which reads like the engine regressing rather than the argument being wrong. `bcb_require_dirs()` names the typo, and suggests the path that would have worked, for all seven harnesses that take corpus arguments
+- Added `--sample-tokens=N` to `bench/run-recall.php`, so a recall figure can be compared across two detection thresholds. Selection carried a token floor — a unit that cannot be reported at all must not count as a detector failure — and that floor tracked `--min-tokens`, so raising the threshold selected a different set of functions and the comparison reported the difference between two populations as the engine's. It is the same mistake the line floor was introduced to fix, on the other axis. Unset, the floor still tracks `--min-tokens`, so every recorded single-threshold number stands unchanged; a floor below the threshold is refused rather than warned about, because a recall number taken that way looks like a result
+- Fixed `tokenize()` dropping every single-character token — `; { } ( ) , = + - * / . < >` — because `token_get_all()` hands them back as bare strings carrying no line number: about half the program text was invisible, and it was the half that says what the code does. With `+`, `-`, `*` and `.` gone, `$x = $a + $b;` and `$x = $a - $b;` had identical signatures, and two files differing on every operator were reported as an exact, non-gapped clone. Each now takes the line of the token before it, which is sound because a newline only ever appears inside a whitespace or comment token and both of those are arrays
+- Changed the `--min-tokens` default from 70 to 100, because a token now reaches about half as far into the source and leaving the number would silently halve what a user configured; chosen on the median size of a reported finding rather than on clone count, since a change expected to find duplication the blind engine could not see makes count the wrong instrument
+- Fixed `--help` naming 70 as the `--min-tokens` default after the default had moved to 100
+- Fixed `Facts\RegionStructure` and `Facts\FileStatements` numbering only the tokens PHP returns as arrays, so the facts layer and the matcher disagreed about what a token is; their own test — that all three agree on the count — is what caught it
+- Changed a statement made only of closing delimiters to be recognised as one, so `});` no longer leaves a statement holding a lone `}`: a closure holding it had stopped reading as registrations-only, and `Route::group(…, function () { … })` had stopped being a registration
+- Changed `bench/run-recall.php` to size its injected clones in source lines rather than tokens, so a recall figure read across a tokenizer change measures the engine and not the ruler
+- Changed the licence to MIT. Every file inherited from `sebastianbergmann/phpcpd` has been rewritten from its specification, each proved to emit byte-identical output before its attribution was changed, and `php bench/check-provenance.php` reports the inventory at zero — which is the precondition ruling S set for exactly this. No BSD text ships with it, because no code under that licence does — a licence file covering nothing would assert an encumbrance this package does not carry. The origin is credited in `NOTICE` as ancestry rather than as a licence
+- Changed the provenance gate from counting how far there was to go to refusing to let the count go back up, since a file arriving with an inherited attribution under an MIT `LICENSE` is a contradiction rather than a shortfall
+- Changed the totals line to say what it measures — `37.50% of 56 scanned lines lie inside at least one clone` — because "duplicated lines out of total lines" invited the reading that let the old arithmetic print a percentage above a hundred
+- Fixed `CodeClone` identifying itself by `md5('')` when its source could not be read, which is the same value for every such clone, so `CodeCloneMap` merged unrelated findings into one naming four unrelated sites; a fragment with no readable text is identified by where it is instead
+- Changed `Log\Text`, `Log\PMD`, `CodeClone`, `CodeCloneMap`, `CodeCloneMapIterator`, `Detector`, `AbstractStrategy`, `AbstractXmlLogger`, `DefaultStrategy` and `CLI\Application` to be written from their specifications rather than inherited, each gated on byte-identical output before its header moved
+- Added `Log\ReportPath`, so a report names a file the same way however the command was typed: `phpcpd src` and `phpcpd /abs/repo/src` produced different `path` values for one scan, which SonarQube and Jenkins resolve differently and a report written inside a container names files that do not exist outside it
+- Added `endline` to the PMD report and `endLine` to SARIF, so a reader that draws the duplication draws its extent rather than one line of it
+- Fixed every displayed line range being both borrowed from the clone class and one too long: the console printed `3-33` beside `(30 lines)` for a clone ending at 32, because `CodeCloneFile::lastLine()` existed for exactly this and no reporter called it
+- Fixed the console advising by substring-matching the path, which told the authors of `AdminTestMail.php` and `TestRuleFormRequest.php` to reach for a `@dataProvider`; the advice now uses what the run established, since `Facts\FileRole` states the rule it broke and has no test role to ask
+- Fixed a file the scan could not open being dropped silently, taking its lines out of the total the duplicated share is measured against without saying so
+- Fixed both strategies counting a file's lines with `substr_count($buffer, "\n")`, one short whenever the last line has no break after it
+- Fixed the per-token signature being five bytes — a type truncated to one and `crc32()` of the text in four — so `'wp_scrape_nonce'` and `'Antananarivo'`, both in WordPress, hashed alike and the files holding them were reported as an exact copy; a token is eight bytes of `xxh64` over type and text together
+- Improved the window hash by rolling it instead of digesting the whole window at every position, which was 64 % of the scan phase and O(n·minTokens) where Rabin-Karp is O(n) — 27 % faster overall, and it is what makes the wider token free
+- Added `Console\Progress` to the wall-clock sweep, which printed nothing for four minutes at a time
+- Fixed the fact audit reading code blocks, so a quoted WordPress listing was asked to cite a measurement about a different corpus
+- Fixed `--force` silencing the check that refuses a row measured across two machine states, which recorded a phpunit row taken on battery
+- Fixed both logger families discarding the return of `file_put_contents()`, so `--log-sarif=build/report.sarif` on a machine with no `build/` directory printed its findings, wrote nothing and exited 0; a failed or short write now raises `LogWriteException` and the run exits non-zero
+- Removed `AbstractStrategy::setConfig()`, a public method with no caller in the product whose body was a verbatim copy of the constructor's, leaving the configuration and the normalizer immutable
+- Fixed `CodeCloneMapIterator` sorting ascending and then reversing the array, which hands back every tie in reverse discovery order now that PHP's sort is stable; it is an aggregate now rather than a five-method cursor over a list it already holds
+- Added a progress bar for long scans, on stderr and only when stderr is a terminal, redrawn once per percentage point rather than once per file, sized so no column moves between passes, and erased when the scan ends
+- Added colour to the console report, marking the ranking the report already computes: a demoted finding and its score dim, a near-miss divergence yellow, the suggested move cyan, the second and later occurrences of one clone dim, and a failed run red on stderr — `NO_COLOR` outranks `FORCE_COLOR`, and a piped run is byte-identical to an uncoloured one
+- Fixed the settings table padding every value to the width of the widest one, which stretched `--show-config` to 147 columns and pushed the SOURCE column off an eighty-column screen on rows whose value was the word `false`
+- Fixed every diagnostic going to stdout, so `phpcpd src > report.txt` wrote its failures into the report and left the terminal silent; diagnostics now go to stderr and the banner stays on stdout as the report's first line
+- Fixed `--help`, laid out for an infinitely wide screen at 205 columns with 23 lines past 80, so that option descriptions wrapped mid-word into the option column; they now wrap to a hanging indent at the terminal's width
+- Added the reporter goldens ruling S's protocol asks for
+- Fixed the benchmark to scan what the product scans — `bcb_gate_files()` now detects the preset the way the product does, so firefly-iii is measured at the 1,291 files a user sees rather than 1,445
+- Fixed `bench/fetch.sh` to apply the `strip` list its manifest declares, which it had been reading past
+- Changed the span rule so a table written as statements is read as a table
+- Changed the registration stratum so a route file is recognised as one and demoted only against itself
+- Fixed the statement reader so a keyword used as a method name is treated as a name
+- Fixed clone extents so an occurrence is reported at its own length rather than at its class's
+- Fixed the chain builder, which lost a gapped clone whose two flanks overlapped by a token
+- Fixed `bench/check-determinism.php` to read the project's own `phpcpd.ini`
+- Added `Phpcpd::supports()`, so an embedder can ask instead of guessing
+- Added a `$defaultExcludes` parameter to `Phpcpd::detect()`
+- Fixed the duplicated-line total to count coverage, with each copy measured over its own lines
+- Fixed triage so a built PHAR is not counted as source, however it opens
+- Fixed a generated banner that announced the file in prose
+- Added `sigil`, which renders measured numbers into documents instead of leaving them to be typed in
+- Fixed the wall-clock gate, which reported the machine's power policy as an engine failure
+- Fixed the normalizer so a consistent rename is a Type-2 clone whether or not the name is qualified
+- Fixed candidate selection, where a short candidate suppressed the long one containing it
+- Fixed the token bag, which reported every clone one line short
+- Fixed detection to depend on which files were given rather than on the order they arrived in
+- Fixed `bench/fetch.sh`, which pointed at a URL that 404s
+- Changed the speed claim to say what was measured
+- The wall-clock gate now fails every corpus, with no undetermined case left. It used to fail five of six while WordPress sat inside its own run-to-run spread, too close to call; making the whole token stream visible roughly doubled the signature, which the unified engine pays in full and the default pipeline largely escapes at the higher token threshold, so the gap widened on all six. The cause is understood and the fix is deferred because it changes detection semantics; see `docs/research/deferred-engine-work.md`, whose table is rendered from `bench/results/walltime.tsv` rather than transcribed
+- Measured the boundary case this list used to carry as an unquantified caveat, and it is not a defect. Two adjacent clones can share one physical line — on firefly-iii, 49 span pairs of 366 clones do; on php-parser and symfony-console, none — and the reason is that one clone ends on that line and the next begins on it, each with tokens genuinely there. `AccountController.php` splits line 343, `'category_id' => (int) $journal['category_id'],`, between the clone ending at it and the clone starting at it. Every span is therefore honest about the lines it occupies, and the only way to see a double count is to sum two spans, which nothing does: the coverage total is a union. Reporting token ranges in line coordinates has this consequence, and the alternative would be a clone denying a line it really covers
+- Changed the wall-clock sweep to measure Stage 0 as its own line
+- Added Stage 0 triage, discarding by default
+- Removed `--algorithm=suffixtree`, and with it the package's second licence
+- Changed MODERNIZATION.md's ruling-S inventory into a measurement
+- Removed the fishiness classifier, leaving Stage 0 all proof
+- Fixed the precision pool to be reproducible, and its site labels to line up
+- Changed MODERNIZATION.md's ruling-S inventory, re-measured
+- Changed the precision audit to record and score the M5 strata
+- Changed `bench/check-walltime.php` to measure the presentation tier as its own line
+- Fixed ruling 7(b), where the chain scorer decided what its contract says it only ranks
+- Fixed divergence reporting to say whether the divergence is inside the clone or past its edge
+- Added `--acknowledged` / `--write-acknowledged`: a ledger that demotes and never hides
+- Added confidence ranking: findings ordered by evidence, and the evidence printed
+- Added asserted and demoted findings, tagged inline in every output format
+- Added the facts layer's second half: a file's statements, and its role
+- Added `bench/precommit-rules.php`, the M5 pre-commitment experiment's instrument
+- Updated the unified engine's three open items to say what was measured
+- Deprecated `--algorithm=tokenbag` without removing it, because the unified engine does not yet report every location it finds (ruling 6)
+- Changed `check-superset.php` to adjudicate an uncovered location before calling it a miss (ruling 6)
+- Changed **literal** in the span rule to mean statement-free (ruling 5)
+- Changed the paper to add the unified engine, a correction, and a method note
+- Added `MODERNIZATION.md`, the inherited-surface inventory (ruling S)
+- Deprecated `--algorithm=suffixtree`
+- Changed the precision pool to build its corpus from Stage 0 rather than from a second definition of it
+- Changed the superset check to adjudicate an order-free claim instead of declining to
+- Added ruling R: the order-free capability, built into the engine rather than beside it
+- Added the span discriminator: a literal table matching itself is not a clone
+- Changed the tracking metric to name the findings it silences, not just count them
+- Changed the Stage 0 acceptance to report a posture comparison instead of asserting a bar
+- Added `bench/relocate-worksheet.php`, so a rated worksheet can name its files again
+- Fixed `bench/pin-snapshot.php`, which was outside the static-analysis gate
+- Fixed the private corpus's path, which was kept out of commits by a file outside the repository
+- Changed the classifier's trade to be re-derived on the population it is actually asked about
+- Added command-line selection of Stage 0, which turns nothing on by itself
+- Added preset auto-detection, so a framework preset applies itself when the project says what it is
+- Fixed triage so a compiled cache no longer counts as evidence that code is alive (ruling V)
+- Added the between-rounds precision instrument (ruling U)
+- Changed Stage 0 to add two more rungs of proof and to ship a trained model
+- Changed the file finder so a hidden directory is not application source
+- Added Stage 0: what is program text, decided once, before duplication is measured
+- Added the autoload rule: a file the autoloader cannot reach is not program text
+- Added `bench/pin-snapshot.php`, so a corpus measurement can be shown to be about one tree
+- Fixed the subsumption check, which failed order-free baseline findings with an adjudicator that cannot judge them
+- Added a subsumption check against the merged default pipeline, which is the v2.0 release gate
+- Fixed a candidate the aligner refuses, so it gives back the exact clones inside it, split where the alignment failed
+- Fixed the benchmark's gates to scan the corpus the product defines instead of turning its excludes off
+- Added Stage D to `--algorithm=unified`: gapped, reordered, and the normalized second view
+- Changed the index's frequency cap to count occurrences per file, which is the number that was generating the work
+- Fixed site identity so two sites are the same place only when they agree on the **longer** of them, and a block inside a bigger span is no longer swallowed
+- Changed cluster mining to stop once the best chain is too short to be a clone
+- Changed chaining so a file pair is chained only once it has shown one guaranteed-detectable run's worth of agreement
+- Fixed a candidate about to be refused, which carried the evidence away with it
+- Fixed a file's self-duplication to be grouped by **shift**, so a repetitive file no longer swallows its own clones
+- Fixed the index version at 5, because the seed-pair cap changes no stored byte
+- Fixed the seed bound to count the pairs a fingerprint yields rather than the places it occurs
+- Fixed the precision audit to report per-engine precision for **both** raters, not just the first
+- Fixed two equally-scored chains to be settled by coverage rather than by which one the sweep reached first
+- Fixed a clone's outer edges to be recovered whole, because the run there has nothing to bridge to
+- Added a restriction to the precision audit, so it can look only at code that is actually part of the program
+- Updated the documentation to record that the unified engine can exhaust memory on a large, repetitive codebase
+- Added recall curves for the density-parameterized injector families
+- Added a size sweep to the wall-clock check, which measured only whole corpora
+- Added a precision-audit harness for the two-rater protocol
+- Fixed a file's repeated block to be reported as one class naming every copy, instead of being discarded as "periodicity"
+- Fixed extension, which matched a file against itself at offset zero
+- Fixed a same-file clone to require two different places, not merely two different starts
+- Fixed the reorder test to measure a bijection, so a repetitive file is not "a reorder of itself"
+- Fixed verification to accept the chain as its own witness, dropping one file from 118s to 0.5s
+- Added recognition of class names the code **constructs** to orphan detection
+- Added `--algorithm=unified`, stages A–C
+- Fixed a clone's excerpt to be read once per file instead of once per clone
+- Added a benchmark harness that verifies itself, and two new injector families
+- Changed nothing about the `suffixtree` engine in the end — it was removed and the removal was reversed
+- Fixed third-party attribution that the fork had stripped
+- Changed the resolution pipeline into one fold, removing four inherited files
+- Changed the config and template sweeps to be read on demand, and at most once
+- Fixed a code generator being mistaken for generated code
+- Fixed `--orphans` staying quiet when it covered only **some** autoload roots
+- Fixed a preset silently scanning almost nothing on a non-standard layout
+- Fixed `--show-config` omitting the scan paths and mislabelling the preset
+- Fixed Blade-only references being invisible to orphan detection
+- Fixed seeders and factories being reported as definite orphans
+- Fixed a brace-less existence guard suppressing an unrelated later declaration
+- Added a scan-root line to every run, and a refusal for a runaway one
+- Added a warning to `--orphans` for when it cannot see the whole project
+- Updated the documentation to say what the duplicated-line percentage measures
+- Fixed one unreadable directory aborting the entire run
+- Fixed `.phpstan` not being excluded, where only `.phpstan.cache` was
+- Fixed `FileFinder::find()`, separated from its own docblock by the unreadable-directory change, which erased its `list<string>` types and cascaded 14 PHPStan level-max errors through `Application`, `Orphans`, `Phpcpd` and `ProjectContext`
+- Added `bench/check-provenance.php`, the ruling-S inventory as a measured number
+- Added `bench/check-log-equivalence.php`, the gate no reporter had
+- Added a string catalogue: every sentence the tool prints now lives in `locale/`, keyed by what the message does, and the code asks for it by key. The wording had been spread across five classes, so a phrase could not be reviewed beside its neighbours and rewording one meant finding it by grep. Reading them together is what exposed the rest of this list
+- Added `--language`, and twenty-seven translations alongside English: Arabic, Bulgarian, Bengali, Czech, Danish, German, Greek, Esperanto, Spanish, Estonian, Finnish, French, Galician, Croatian, Hungarian, Italian, Japanese, Norwegian Bokmål, Dutch, Polish, Portuguese, Romanian, Russian, Albanian, Swedish, Ukrainian and Chinese. A translation is one file, may be partial — a key it has not reached falls back to English, one key at a time — and is registered by existing: `locale/` *is* the list, so a new code becomes legal in `--language` and in `phpcpd.ini` the moment the file is dropped in
+- Fixed `--language` doing nothing at all. It parsed, validated itself against the shipped catalogues, reported its default in `--help` and `--show-config`, and changed not one byte of output, because all thirty-eight construction sites asked for `new Catalogue()` with no argument. The language is now a process-wide default set once — which is what it describes, a tool writing its whole output in one language — so nothing had to be threaded through thirty-eight sites and nothing could be missed
+- Fixed a refusal raised *while* the settings are being built coming out in English however `--language` was set. Those refusals are printed before the settings that would name a language exist, so `LanguagePreference` reads what can be known first — `--language`, `--config` and `--no-config` from argv, then `language` from the config files those name — and the parse replaces its answer with the settled one the moment there is one. Config files are read through `ConfigFile` rather than re-read, so the two cannot disagree
+- Changed every message to carry its severity as a word — `ERROR:`, `WARNING:` — rather than only as colour and stream. `NO_COLOR`, a pipe, or `2>&1` in a CI log each erase the difference between a failure and ordinary output; a word does not erase
+- Fixed `report.scan.noFiles` and `noFilesAfterTriage` being written as reports when both go to stderr and exit 1. Giving severity a word is what made the misclassification visible: they are refusals, and now say so
+- Changed counted phrases to be written label-first with the count in brackets — `Scanned files (1), roots (1), excludes (13)` rather than `Scanned 1 file(s), 1 path(s)`. This removes the agreement problem instead of papering over it, in English and in the languages where `(s)` means nothing and the plural rule has six branches, and it is why the catalogue carries no plural mechanism at all. It had two
+- Changed refusals to be keyed by their result rather than their subject — `refuse.needsValue.option` beside `refuse.needsValue.setting`, not forty lines apart under `refuse.option` and `refuse.config`. Two sentences were saying one result two ways and had been for as long as both existed: an option "requires a value" while a setting "needs a value", and a config file was "not found" in one construction and "could not be parsed" in another. Both now read the way the majority already did
+- Fixed the tool reporting its own console entry point as a 44-line clone of itself. `FileFinder` admits an extensionless file whose `#!` line names php, and the composer manifest names the same file under `bin`; the two spell it differently — the finder as the scan root spells it, the manifest as an absolute path — so a string comparison admitted both and the detector tokenized one file twice. Membership is decided on `realpath()` now. Found by scanning this repository, where it inflated the clone count and the duplication percentage
+- Fixed the orphan advisory in a default run contradicting the command it tells the reader to run. It ended with "further orphan findings not shown (1) — run --orphans to review", and `--orphans` reported none: triage runs first in a default run, and a file it discards still calls what it calls, so the symbols it referenced looked dead. Triage narrows what is reviewed for duplication; it must not narrow what is read for references. The requirement was already written at the call site that resolves entry points for both modes, and triage undid it thirty lines further on
+- Fixed the throughput suffix and the confidence line still being assembled with `sprintf` after everything else had moved, which made them the only two printed sentences a translation could not reach
+- Added `bench/check-locales.php`, which measures every translation against English and distinguishes the one way a locale file is allowed to be incomplete from the two ways it is always wrong: a key English does not have, or a `:placeholder` renamed or dropped, fail; a missing key is reported as coverage and falls back
+- Fixed `locale/` being in no linter's finder — not even `en.php`, for as long as the directory has existed. One hand-written file hid it; twenty-two arriving at once did not
+- Changed the PHP floor from 8.5 to **8.4**, which is the version the code actually needs. Nothing in the tree used an 8.5-only feature — no pipe operator, no `#[\NoDiscard]`, no `array_first`/`array_last` — and the floor was a support policy written as a technical requirement. The real constraint is 8.4's asymmetric visibility (32 `public private(set)` properties in `Settings`) and property hooks in `ProjectContext`. Measured rather than assumed: the full suite passes on 8.4 as well as 8.5, and CI now runs both so the floor is tested instead of claimed. A clone detector is installed where PHP lags, so the lower floor is the point
+- Removed `rector/rector` from require-dev. It had no config file and so did nothing; given one, it wanted 92 changes across 46 files, and the three largest rules were not improvements — rewriting `$x === null` as a fully-qualified `instanceof`, turning statically-called helpers non-static, and dropping parentheses from `new`. The project's rule for php-cs-fixer applies to any such tool: keep a rule only where the tree already complies, so the gate lands green and can only ever report a regression. No rector rule met it
+- Added the packaging and CI files the 2.0 layout needs: `.gitattributes` rewritten for `docs/` and `locale/` — `/locale` is runtime data and is deliberately *not* export-ignored, since a dist archive without it cannot print a single sentence — plus `.github/workflows/ci.yml` extended to run the five gates that passed locally and were enforced nowhere: PHPStan over `bench/`, the reporter goldens, the translations, `sigil --check` and the provenance inventory
+- Fixed the default pipeline reporting one duplication twice. Both engines see the same duplication and need not agree on where it ends — on two Laravel controllers sharing a block, Rabin-Karp reported lines 8-42 and the token bag 9-42 — and identity is a content hash, so two spans differing by a line were two clones and the merge kept both. The reader saw the same finding listed twice and the clone count, which gates CI, counted it twice. Neither engine does this alone: over `bench/corpus/phpunit`, Rabin-Karp finds 215 with none contained in another and the token bag 110 with none contained in another, against 325 merged of which six were. The merge now drops a clone whose every site lies inside the corresponding site of one already present — containment rather than overlap, because containment is the case where dropping provably loses nothing, and the totals confirm it: 325 to 321 clones with 12,905 duplicated lines and 6.54% unchanged
+- Changed every counted summary line to be written label-first, which the scan line already was. `Found 1 code clones with 30 duplicated lines in 2 files` was the tool's most-read sentence and it did not agree with itself; it now reads `Found clones (1), duplicated lines (30), files (2)`. The same fault was in the triage line, the orphan summary, the coverage line, the clone-size line, the acknowledgment line and the partial-write refusal — nine sentences that print on ordinary runs. Ten of the thirty reporter goldens were recaptured; PMD, JSON and SARIF are structured and were untouched. The twenty-seven translations keep their own wording for these keys, which still reads as it did
+- Changed `composer.lock` to be export-ignored. Composer resolves a dependency from its `composer.json` and ignores its lock file, so this shipped 163 KB that does nothing and listed dev dependencies a consumer has not installed, which a scanner walking `vendor/` can raise advisories against. Three of the sixty-five packages installed here ship one. It stays in the repository; only the dist archive drops it
+- Fixed `--cache` doing nothing at all on the default pipeline. The cache block sat below an early return taken whenever no `--algorithm` was given, which is the ordinary invocation, so a documented CI feature wrote nothing, hit nothing, and said nothing about it for everyone who did not name an engine. Found while testing a cache round-trip: the directory stayed empty. The fingerprint already keys on the algorithm, so the default's entry cannot be confused with a single-engine one
+- Fixed the clone cache dropping two fields it had written. `tokens` was serialised and then ignored on the way back in, so a warm run rebuilt occurrences the cold run had measured as unmeasured. The cache format is version 5; older caches are ignored rather than misread
+- Fixed a Rabin-Karp finding's reported extent differing from what it matched, by up to 293 lines. Neither occurrence was measured, so both borrowed the clone's single length — and copies do not span equally many lines when the comments between them differ. Measured against the real line of each site's last matched token: WordPress had 48 sites reported long and 43 short, phpunit 17 and 2, firefly-iii 21 and 23; all six corpora now report zero of each. This is not the boundary case the known-issues list carries — two disjoint token ranges sharing one physical line — which is a different mechanism and still stands. The unified engine never had it, because it measures every occurrence. No total moves: coverage is a union, and reported against true duplicated lines two corpora agreed exactly while WordPress differed by one line in 20,974
+- Fixed a clone reported once per engine that found it. Rabin-Karp and the token bag describe the same region at different granularities — on phpunit's tandem-repeat test classes a 311-line finding and a 155-line one over the same pair of files — and both were listed. Findings over the same files whose every site meets the other's are one region now, and the longer reading is kept: 36 fewer findings across three corpora, with duplicated lines and the percentage unchanged everywhere
+- Fixed a table written as statements failing to read as one. `Strata` asked which statements a clone covers by converting its reported lines back to tokens, and that does not round-trip — a clone beginning partway through a line was charged every token on it, including a statement it does not contain. It asks the occurrence's own token range now, and a statement the span only clips is not counted as inside it
+- Fixed `locale/hr.php` being a byte-for-byte copy of `locale/ro.php`. Croatian readers were served Romanian, at 100 % coverage with every key known and every placeholder intact — nothing about the file was wrong except which language it was in. Croatian is written out properly, and `bench/check-locales.php` now fails on a pair of locales that agree on every shared key
+- Changed the counted lines in all twenty-six other translations to be written label-first, as the English ones already were. Spanish read "1 clones de código", French "1 fichiers", German "1 Dateien" — the same agreement fault, in every language that has agreement. The nouns were taken from each locale's own file rather than invented
+- Fixed `bench/measure-logic-share.php` measuring something other than what it named. It counted only the tokens `token_get_all()` returns as arrays, dropping every single-character one — about half the program text and nearly all of it non-literal — and took a line range rather than the occurrence's token range. Re-measured, nothing on any of the six corpora scores below 0.40, so the low band the deferred-work section was built on does not exist and the conjunction rule resting on it cannot fire. Roadmap item 2 loses its most promising lead and gains a plainer refutation
+- Added tests for the five fixture directories nothing referenced — `orphans/`, `suppression/`, `ignore/`, `e2/` and `r2/`. Each was a specification with its answers written in its own files: all four orphan tiers, seven suppression rules, three ignore-marker notations, type-anchoring's specificity, and what rename-insensitivity may fold. Every one passed and nothing said so
+
+## v1.4 — August 23, 2026
+
+- Fixed scanning a cache directory, which could turn a failing gate green
+- Fixed the test guard, which blocked every runner but two
+- Added suppression rules for structurally-explained symbols
+- Added `@phpcpd-planned`, and reasons on tags
+- Added clone suppression
+- Added `phpcpd.ini`
+- Added `--show-config`
+- Fixed the default run and `--orphans` disagreeing about reachability
+- Added findings grouped by cause, with evidence
+- Added `--fail-on`, `--no-suppress`, `--explain`
+- Fixed docblock tag matching being substring-based, where `@api` inside prose silently suppressed a real finding
+- Changed `OrphanResult` to gain `suppressed()`, `planned()`, `tier()`, `entries()` and `fails()`, so that `all()`, `definite()`, `possible()`, `count()` and `isEmpty()` speak only about findings and a scan that suppresses everything still reads as "no orphans"
+- Changed `Orphans::detect()` to accept `noSuppress`, `failOn` and `defaultExcludes`
+- Changed `Symbol` to replace `$suppressed`/`$entrypoint` with `$rule`/`$ruleReason`, and `Orphan` to gain `$rule` and `$evidence`
+
+## v1.3 — August 18, 2026
+
+- Fixed orphan detection's block-structure tracking and aliased imports — four constructs desynced the symbol collector's stack and reported live code as dead, and `Illuminate/Database` went from 538 definite orphans to 13
+- Changed an unreferenced trait to a **possible** orphan rather than a definite one, moving 13 findings across `laravel/framework`
+
+## v1.2 — July 19, 2026
+
+- Added orphan detection: top-level classes, interfaces, traits, enums and global functions that nothing in the scanned set references, with two run modes, two confidence tiers, whole-file "unwired" and "superseded copy of" explanations, entry-point awareness, suppression annotations, and the `Orphans::detect()` headless API
+
+## v1.1 — June 28, 2026
+
+- Added headless mode (`Phpcpd::detect()`): a one-call, in-process API that finds files, runs the same engine the CLI uses, and returns the raw `CodeCloneMap` — so the CLI and every embedder share one detection core and can never disagree about what a clone is
+- Added framework presets (`--preset=<name>`): a named bundle of paths, suffixes and excludes, pure configuration with no runtime dependency, shipping with a `laravel` preset that explicit flags seed-then-override
+- Added a PHPUnit integration (`integration/phpunit/`): an `AssertNoDuplication` trait and a `DuplicationConstraint` that turn copy/paste detection into a regression test, shipped in the production autoloader so it works even when phpcpd-next is a `--dev` requirement
+- Added documentation for wiring the headless API into a Laravel Artisan command, which needs no extra package
+- Added the package to Packagist as `phpcpd-next/phpcpd`, installable with `composer require --dev phpcpd-next/phpcpd`
+- Changed `composer.json` to declare `type` and `keywords`, to `suggest` `phpunit/phpunit` for the optional PHPUnit integration, and to move the `PHPUnit\` namespace into the production autoloader
+- Added `.gitattributes` with `export-ignore` rules, so the dist tarball ships only runtime code and not tests, benchmarks or tool configs
+- Added a committed `.php-cs-fixer.dist.php` codifying the existing code style, so `composer lint` and `composer check` run non-interactively
+- Updated the README to document the full feature surface accurately: the real default (Rabin-Karp + TokenBag) and `--rk`, all four output formats, the complete option reference split into stable and research flags, presets, headless mode, and the PHPUnit integration
+
+## v1.0 — June 27, 2026
+
+- Improved the suffix-tree engine with a banded edit-distance DP: a cell more than `maxErrors` off the diagonal can never lie on a sub-threshold path, so the Ukkonen cutoff turns the per-clone cost from `O(L²)` to `O(L·maxErrors)` — measured ~3.5x faster at every edit distance on a Firefly III slice, with byte-identical output
+- Fixed degenerate zero-line clones in the suffix-tree engine, where a clone whose in-file span collapsed to nothing was emitted as meaningless `(0 lines)` noise
+- Added Type-2 detection on every engine via `--fuzzy`, where a shared `TokenNormalizer` abstracts identifiers and literals to type classes — previously `--fuzzy` touched only variables, and only in the default engine
+- Added inconsistent-clone reporting, distinguishing gapped Type-3 clones from exact copies, marked `[inconsistent]` in console output and raised to `warning` severity in SARIF
+- Added type-aware edit weights in the suffix-tree engine, so a changed control keyword costs more of the `--edit-distance` budget than a renamed identifier
+- Added the `tokenbag` engine (`--algorithm=tokenbag`), a SourcererCC-style order-invariant token bag and inverted index that detects reordered clones the contiguous engines miss
+- Added an incremental result cache (`--cache` / `--cache-dir`), keyed by a fingerprint of the configuration and a manifest of file hashes, so a re-run on unchanged files skips detection entirely
+- Added a per-file incremental index (`--incremental`, Rabin-Karp only) that persists each file's tokenization and re-tokenizes only the files that changed, replaying the rest from the index
+- Added JSON (`--log-json`) and SARIF 2.1.0 (`--log-sarif`) reports alongside the existing PMD-CPD XML, unified behind a shared `Log\Logger` contract
+- Removed every runtime Composer dependency — `sebastian/version`, `sebastian/cli-parser`, `phpunit/php-file-iterator` and `phpunit/php-timer` — replacing them with owned code: a declarative self-documenting CLI parser with value validation, a file finder that prunes excluded directories and supports glob excludes, and a timer that reports throughput
+- Changed the namespace to `LucianoPereira\PhpcpdNext` and switched autoloading from classmap to PSR-4
+- Changed the PMD XML logger to use DOM-native escaping
+
+## v0.1 — June 26, 2026
+
+- Changed the requirement to PHP 8.5 or later, where upstream required 8.1
+- Changed `composer.json` to lock the platform to `8.5.0`
+- Fixed the `sebastian/version` v4 API break, where `getVersion()` was renamed to `asString()` and the banner was crashing silently on import
+- Fixed `empty($object)` always being false: `SuffixTreeStrategy` tested `empty($this->result)` on a `CodeCloneMap` object, which is never empty
+- Fixed a division by zero in `CodeCloneMap::averageSize()`, which divided by `count()` without guarding the empty case
+- Fixed `CodeClone::lines()` using the `false` that `current()` returns on an empty array as a `CodeCloneFile`
+- Fixed `DefaultStrategy` and `SuffixTreeStrategy` passing the `string|false` return of `file_get_contents()` straight into tokenisation
+- Fixed `CodeClone::lines()` calling `file()` without checking its return
+- Fixed `AbstractXmlLogger` not checking the return of `mb_convert_encoding()`, which is `false` on encoding failure
+- Fixed `AbstractXmlLogger::toUtf8String()` returning the `null` that `preg_replace()` can give back
+- Changed the banner to credit both the original author and the fork: `phpcpd 0.1.0 by Luciano Federico Pereira based on phpcpd 7.0-dev by Sebastian Bergmann.`
+- Changed the source to PHP 8.0-8.5 idiom throughout: `readonly class` on `Arguments`, `CodeCloneFile`, `StrategyConfiguration` and `CloneInfo`, constructor property promotion everywhere eligible, `#[\Override]` on every method that implements or overrides a contract, typed class constants, `foreach` over values where the key was never used, and `=== null` in place of `empty()` on objects and nullable types
+- Improved `DefaultStrategy::processFile()`, which contained two identical 17-line blocks building and recording a `CodeClone`, by extracting `recordCloneIfValid()` — after which the tool run on its own source reports zero clones
+- Added PHPDoc generics (`list<T>`, `@template`, `@implements`) on all collection classes
+- Added the toolchain the project is gated by: PHPStan level 9 at zero errors, PHP-CS-Fixer on `@PER-CS2.0` with risky fixers, Rector on the `php85` set, PHPUnit, a GitHub Actions CI running audit, lint, analyse and test on every push, an `.editorconfig`, and the `lint`, `lint:fix`, `analyse`, `test` and `check` Composer scripts

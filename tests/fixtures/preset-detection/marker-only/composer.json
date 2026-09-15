@@ -1,0 +1,4 @@
+{
+    "name": "fixture/not-laravel",
+    "require": { "php": "^8.3" }
+}

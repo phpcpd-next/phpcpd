@@ -1,0 +1,7 @@
+corpus	label	phar	rk	rk_fuzzy	tb	tb_fuzzy
+firefly-iii	firefly	1.54	1.54	15.56	6.20	15.74
+php-parser	php-parser	4.15	4.12	18.37	5.88	8.35
+phpunit	phpunit	4.60	4.64	25.81	6.09	6.33
+symfony-console	console	0.27	0.27	3.14	2.88	5.67
+symfony-string	string	0.33	0.33	36.87	2.39	1.64
+wordpress	wordpress	1.51	1.50	7.36	2.24	11.17

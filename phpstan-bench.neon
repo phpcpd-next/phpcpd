@@ -1,0 +1,50 @@
+# PHPStan for the benchmark harness.
+#
+# phpstan.neon covers src/ and is the gate the project ships behind. This
+# second config holds the bench/ files to the same level, and lists them
+# one by one rather than analysing the directory, because the pre-2.0
+# benchmark runners (run-compare, run-e2, measure-density) are written
+# against the 1.4 API — Arguments, CodeCloneFile::name(),
+# CodeCloneFile::startLine() - and are stale rather than wrong. Their 
+# published results are established and are not re-run, so they are not 
+# rewritten here; porting them is its own task.
+#
+# Anything added to bench/ from now on belongs in this list.
+#
+# Run: vendor/bin/phpstan analyse -c phpstan-bench.neon 
+# (composer analyse:bench)
+#
+parameters:
+    level: max
+    paths:
+        - bench/harness.php
+        - bench/self-test.php
+        - bench/injectors.php
+        - bench/inject.php
+        - bench/check-chaining.php
+        - bench/check-locales.php
+        - bench/check-manifest.php
+        - bench/check-determinism.php
+        - bench/check-superset.php
+        - bench/check-incremental.php
+        - bench/check-walltime.php
+        - bench/run-e3.php
+        - bench/run-recall.php
+        - bench/audit-precision.php
+        - bench/lib.php
+        - bench/triage.php
+        - bench/pin-snapshot.php
+        - bench/relocate-worksheet.php
+        - bench/measure-statements.php
+        - bench/precommit-rules.php
+        - bench/train-confidence.php
+        - bench/check-provenance.php
+        - bench/check-log-equivalence.php
+        - bench/power.php
+        - bench/sigil-parse.php
+        - bench/sigil.php
+        - bench/collect-facts.php
+        - bench/measure-logic-share.php
+        - bench/build-tables.php
+        - bench/recall-oracles.php
+        - bench/probe-registration-shape.php

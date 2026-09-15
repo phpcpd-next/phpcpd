@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the academic paper (paper/token-based-clone-detection-for-php.tex) into the matching PDF.
+# Build the academic paper (docs/paper/token-based-clone-detection-for-php.tex) into the matching PDF.
 #
 # Runs pdflatex three times so the table of contents, cross-references, and
 # pgfplots coordinates all settle. The bibliography is inline (thebibliography),
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PAPER_DIR="$SCRIPT_DIR/../paper"
+PAPER_DIR="$SCRIPT_DIR/../docs/paper"
 JOB="token-based-clone-detection-for-php"
 
 command -v pdflatex >/dev/null 2>&1 || {

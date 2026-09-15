@@ -67,7 +67,7 @@ Contribution or Work shall terminate as of the date such litigation is filed.
 You acknowledge and agree that the Project Owner may license and sublicense Your
 Contribution, and any derivative works thereof, under **any license terms** the
 Project Owner chooses, including permissive open-source licenses (such as the
-BSD 3-Clause License under which the Project is currently distributed), other
+MIT License under which the Project is currently distributed), other
 open-source licenses, and proprietary or commercial license terms. This Section
 4 preserves the Project Owner's ability to relicense or dual-license the Project
 as a whole in the future. Nothing in this Agreement requires the Project Owner to

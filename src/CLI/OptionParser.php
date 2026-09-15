@@ -14,7 +14,6 @@ namespace LucianoPereira\PhpcpdNext;
 
 use function array_key_exists;
 use function count;
-use function sprintf;
 use function str_starts_with;
 use function strlen;
 use function strpos;
@@ -25,13 +24,15 @@ use function substr;
  * validation. Driven by OptionDefinition[] so short/long forms map to one
  * canonical name and unknown options / missing or invalid values fail fast.
  */
+use LucianoPereira\PhpcpdNext\Strings\Catalogue;
+
 final class OptionParser
 {
     /**
      * @param list<OptionDefinition> $definitions
      * @param list<string> $argv argv[0] (the program name) is ignored
      *
-     * @throws ArgumentsBuilderException
+     * @throws SettingsException
      * @return array{options: list<array{0: string, 1: ?string}>, arguments: list<string>}
      */
     public function parse(array $definitions, array $argv): array
@@ -66,7 +67,7 @@ final class OptionParser
                 }
 
                 if (!array_key_exists($name, $byLong)) {
-                    throw new ArgumentsBuilderException(sprintf('Unknown option --%s', $name));
+                    throw new SettingsException(self::strings()->get('refuse.unknown.option', ['flag' => '--' . $name]));
                 }
 
                 $definition = $byLong[$name];
@@ -76,7 +77,7 @@ final class OptionParser
                         $i++;
 
                         if ($i >= $count) {
-                            throw new ArgumentsBuilderException(sprintf('Option --%s requires a value', $name));
+                            throw new SettingsException(self::strings()->get('refuse.needsValue.option', ['flag' => '--' . $name]));
                         }
 
                         $value = $argv[$i];
@@ -86,7 +87,7 @@ final class OptionParser
                     $options[] = [$definition->name, $value];
                 } else {
                     if ($value !== null) {
-                        throw new ArgumentsBuilderException(sprintf('Option --%s does not take a value', $name));
+                        throw new SettingsException(self::strings()->get('refuse.takesNoValue.option', ['flag' => '--' . $name]));
                     }
 
                     $options[] = [$definition->name, null];
@@ -103,7 +104,7 @@ final class OptionParser
                     $char = $chars[$j];
 
                     if (!array_key_exists($char, $byShort)) {
-                        throw new ArgumentsBuilderException(sprintf('Unknown option -%s', $char));
+                        throw new SettingsException(self::strings()->get('refuse.unknown.option', ['flag' => '-' . $char]));
                     }
 
                     $definition = $byShort[$char];
@@ -115,7 +116,7 @@ final class OptionParser
                             $i++;
 
                             if ($i >= $count) {
-                                throw new ArgumentsBuilderException(sprintf('Option -%s requires a value', $char));
+                                throw new SettingsException(self::strings()->get('refuse.needsValue.option', ['flag' => '-' . $char]));
                             }
 
                             $rest = $argv[$i];
@@ -140,14 +141,28 @@ final class OptionParser
     }
 
     /**
-     * @throws ArgumentsBuilderException
+     * @throws SettingsException
      */
     private function validateValue(OptionDefinition $definition, string $value): void
     {
         $invalid = $definition->firstInvalid($value);
 
         if ($invalid !== null) {
-            throw new ArgumentsBuilderException($definition->invalidValueMessage($invalid));
+            throw new SettingsException($definition->invalidValueMessage($invalid));
         }
+    }
+
+    /**
+     * The catalogue, made once.
+     *
+     * A static holder rather than a constructor parameter because these are
+     * static entry points reached from the argument parser, where there is no
+     * object to inject into and no caller who would want a different language
+     * than the run does.
+     */
+    /** Built fresh, not cached: the first caller runs before the language is known. */
+    private static function strings(): Catalogue
+    {
+        return new Catalogue();
     }
 }

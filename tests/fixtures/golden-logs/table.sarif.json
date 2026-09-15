@@ -1,0 +1,86 @@
+{
+    "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+    "version": "2.1.0",
+    "runs": [
+        {
+            "tool": {
+                "driver": {
+                    "name": "phpcpd-next",
+                    "informationUri": "https://github.com/phpcpd-next/phpcpd",
+                    "version": "2.0.0",
+                    "rules": [
+                        {
+                            "id": "duplicate-code",
+                            "name": "DuplicateCode",
+                            "shortDescription": {
+                                "text": "Exact duplicated code (Type-1/2)."
+                            }
+                        },
+                        {
+                            "id": "inconsistent-clone",
+                            "name": "InconsistentClone",
+                            "shortDescription": {
+                                "text": "Gapped (Type-3) clone \u2014 copies diverge; bug risk."
+                            }
+                        },
+                        {
+                            "id": "reordered-clone",
+                            "name": "ReorderedClone",
+                            "shortDescription": {
+                                "text": "Reordered (Type-3) clone \u2014 same material, different sequence."
+                            }
+                        }
+                    ]
+                }
+            },
+            "results": [
+                {
+                    "ruleId": "duplicate-code",
+                    "level": "note",
+                    "message": {
+                        "text": "Exact clone: 37 lines, 451 tokens duplicated across 3 locations."
+                    },
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {
+                                    "uri": "tests/fixtures/datatable/generated_table_a.php"
+                                },
+                                "region": {
+                                    "startLine": 3,
+                                    "endLine": 40
+                                }
+                            }
+                        },
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {
+                                    "uri": "tests/fixtures/datatable/generated_table_b.php"
+                                },
+                                "region": {
+                                    "startLine": 3,
+                                    "endLine": 39
+                                }
+                            }
+                        },
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {
+                                    "uri": "tests/fixtures/datatable/self_repeating_table.php"
+                                },
+                                "region": {
+                                    "startLine": 3,
+                                    "endLine": 41
+                                }
+                            }
+                        }
+                    ],
+                    "properties": {
+                        "stratum": "asserted",
+                        "confidence": 0.1946781003578807
+                    }
+                }
+            ]
+        }
+    ]
+}

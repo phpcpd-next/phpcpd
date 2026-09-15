@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 // R1 fixture (base). reorder_swapped.php is this exact function with two adjacent
 // statements swapped: identical token bag, different order. The token-bag engine
-// detects it; the contiguous matchers (rabin-karp, suffixtree) do not.
+// detects it; the contiguous matcher (rabin-karp) does not.
 
 function compute(array $data): array
 {

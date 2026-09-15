@@ -1,48 +1,40 @@
-# Composer
 /vendor/
-composer.phar
 
-# Benchmark corpus — downloaded third-party code, 1.5 GB, not part of this repo.
+# Local Claude Code settings. It accumulates the literal command lines a session
+# was allowed to run, which on this project means dogfood-corpus paths — so the
+# one file in the tree that reliably holds the private corpus's name is this one.
+# It was only ever ignored by the *user's global* gitignore, i.e. by a file that
+# does not travel with the repository; the standing rule that the corpus is never
+# named deserves protection that lives in the repository it protects.
+/.claude/settings.local.json
+
+/.phpcpd-cache/
+/.phpunit.cache/
+/.php-cs-fixer.cache
+/.phpstan/
+.DS_Store
+
+# Benchmark corpus — downloaded third-party code, not part of this repo.
 # Run bench/fetch.sh to rebuild locally.
 /bench/corpus/
 
-# Benchmark vendor — contains phpcpd.phar (comparison binary).
-# Run: curl -L https://github.com/sebastianbergmann/phpcpd/releases/download/6.0.3/phpcpd.phar \
-#       -o bench/vendor/phpcpd.phar
+# Benchmark vendor — holds phpcpd.phar, the comparison binary fetch.sh downloads.
 /bench/vendor/
 
-# Built phar artifact (generate with bin/build-phar.sh)
+# The distributable phar, built by bin/build-phar.sh. `.gitattributes` already
+# keeps it out of the dist tarball, which is a different concern from keeping it
+# out of the repository: at ~1.5 MB it is one `git add -A` away from being
+# committed, and it is regenerated from src/ and locale/ on demand.
 /build/
 
-# Tool caches
-/.php-cs-fixer.cache
-/.phpunit.cache/
-/.phpcpd-cache/
-
 # LaTeX build artifacts (the paper PDF is built via bin/build-paper.sh).
-# Keep paper.tex and paper.pdf; ignore everything LaTeX regenerates.
-/paper/*.aux
-/paper/*.log
-/paper/*.out
-/paper/*.toc
-/paper/*.lof
-/paper/*.lot
-/paper/*.bbl
-/paper/*.blg
-/paper/*.fls
-/paper/*.fdb_latexmk
-/paper/*.synctex.gz
-/paper/*.nav
-/paper/*.snm
-/paper/*.vrb
-/paper/*.auxlock
-/paper/*.dpth
-/paper/*.md5
-
-# IDE / OS noise
-/.idea/
-/.vscode/
-*.DS_Store
-
-# Claude Code local settings
-/.claude/
+# Keep the .tex and the .pdf; ignore everything LaTeX regenerates.
+/docs/paper/*.aux
+/docs/paper/*.log
+/docs/paper/*.out
+/docs/paper/*.toc
+/docs/paper/*.bbl
+/docs/paper/*.blg
+/docs/paper/*.fls
+/docs/paper/*.fdb_latexmk
+/docs/paper/*.synctex.gz

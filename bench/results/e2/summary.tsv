@@ -1,6 +1,6 @@
 corpus	pairs	spec_fuzzy	spec_anchored	lift	recall_fuzzy	recall_anchored
-symfony-string	40	0	5	5	100	100
-symfony-console	40	0	27.5	27.5	100	100
-phpunit	40	0	20	20	100	100
-php-parser	40	0	20	20	100	100
-wordpress	40	0	15	15	100	100
+symfony-string	52	0	1.9	1.9	100	100
+symfony-console	165	0	13.3	13.3	100	100
+phpunit	238	0	18.9	18.9	100	100
+php-parser	179	0	2.8	2.8	100	100
+wordpress	107	0	8.4	8.4	100	100

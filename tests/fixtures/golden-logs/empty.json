@@ -1,0 +1,22 @@
+{
+    "tool": "phpcpd-next",
+    "version": "2.0.0",
+    "summary": {
+        "clones": 0,
+        "inconsistentClones": 0,
+        "duplicatedLines": 0,
+        "filesWithClones": 0,
+        "percentage": "0.00%",
+        "settled": 0,
+        "unfounded": 0,
+        "asserted": 0,
+        "demoted": 0,
+        "demotedBy": {
+            "table": 0,
+            "registration": 0
+        },
+        "acknowledged": 0,
+        "staleAcknowledgments": []
+    },
+    "clones": []
+}

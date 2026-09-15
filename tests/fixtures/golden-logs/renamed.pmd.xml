@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pmd-cpd>
+  <duplication lines="31" tokens="117" stratum="asserted" confidence="+2.5567">
+    <file path="tests/fixtures/type2/rename_base.php" line="3" endline="33"/>
+    <file path="tests/fixtures/type2/rename_variant.php" line="3" endline="33"/>
+    <codefragment>declare(strict_types=1);
+
+// Type-2 fixture (base). Structurally identical to rename_variant.php but every
+// identifier, literal, and the function name differ. Raw-content matching cannot
+// see the clone; token-type normalisation (--fuzzy) can.
+
+function summarize(array $rows): array
+{
+    $total = 0;
+    $count = 0;
+    $peak  = 0;
+
+    foreach ($rows as $row) {
+        $value = (int) $row['value'];
+        $total = $total + $value;
+        $count = $count + 1;
+
+        if ($value &gt; $peak) {
+            $peak = $value;
+        }
+    }
+
+    $average           = $count &gt; 0 ? $total / $count : 0;
+    $result            = [];
+    $result['total']   = $total;
+    $result['count']   = $count;
+    $result['peak']    = $peak;
+    $result['average'] = $average;
+
+    return $result;
+}
+</codefragment>
+  </duplication>
+</pmd-cpd>

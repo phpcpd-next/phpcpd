@@ -1,0 +1,11 @@
+Found clones (1), duplicated lines (46), files (3):
+
+  - tests/fixtures/datatable/generated_table_a.php:3-40 (38 lines) +0.19
+    tests/fixtures/datatable/generated_table_b.php:3-39
+    tests/fixtures/datatable/self_repeating_table.php:3-41
+    → Consider extracting the shared lines into a reusable method, class, or trait.
+
+1 asserted, 0 demoted.
+38.33% of scanned lines (120) are duplicated code.
+Clone lines: average (37), largest (39).
+

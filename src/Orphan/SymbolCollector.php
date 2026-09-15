@@ -49,6 +49,7 @@ use const T_NAMESPACE;
 use const T_NAME_FULLY_QUALIFIED;
 use const T_NAME_QUALIFIED;
 use const T_NAME_RELATIVE;
+use const T_STATIC;
 use const T_STRING;
 use const T_TRAIT;
 use const T_USE;
@@ -74,6 +75,8 @@ use LucianoPereira\PhpcpdNext\Util\TokenCursor;
  * (a real orphan we stay silent about); under-counting would tell someone to
  * delete live code. We always prefer the former.
  */
+use LucianoPereira\PhpcpdNext\Strings\Catalogue;
+
 final class SymbolCollector
 {
     /**
@@ -97,6 +100,25 @@ final class SymbolCollector
         'Entity', 'Embeddable', 'MappedSuperclass',
         // PHPUnit / test tooling — the runner discovers these reflectively.
         'CoversClass', 'Test', 'DataProvider', 'Group', 'RunTestsInSeparateProcesses',
+    ];
+
+    /**
+     * Namespaces whose classes a framework instantiates by convention rather than
+     * by reference. Matched as a namespace SUFFIX, so a modular project that
+     * namespaces its seeders `Acme\Database\Seeders` is covered too.
+     *
+     * Laravel discovers seeders and factories by directory and class-name
+     * convention — `db:seed` calls `DatabaseSeeder`, which in every non-trivial
+     * project globs its siblings — so no seeder class name appears anywhere in
+     * code. Measured on the adopting project: 24 live seeders and factories
+     * reported in the tier that gates CI, where acting on the finding deletes a
+     * working database bootstrap. `definite` is the wrong home for a symbol whose
+     * caller is the framework itself.
+     *
+     * @var list<string>
+     */
+    private const array ENTRYPOINT_NAMESPACES = [
+        'Database\\Seeders', 'Database\\Factories',
     ];
 
     /**
@@ -130,12 +152,25 @@ final class SymbolCollector
         'function_exists', 'class_exists', 'interface_exists', 'trait_exists', 'enum_exists',
     ];
 
-    /** @param list<string> $files */
-    public function collect(array $files): CollectedSymbols
+    /**
+     * @param list<string>         $files
+     * @param ?OrphanConfiguration $config which suppression rules are live. Idiom
+     *                                     scanning is the only part of this pass
+     *                                     that a rule can switch off, so a run
+     *                                     with `--no-suppress=discovery` does not
+     *                                     pay for it.
+     */
+    public function collect(array $files, ?OrphanConfiguration $config = null): CollectedSymbols
     {
+        $config      = $config ?? new OrphanConfiguration();
         $definitions = [];
         $references  = [];
         $stringNames = [];
+        $discoveries = [];
+        $conventions = [];
+        $traitUses   = [];
+        $discovery   = $config->ruleEnabled(Rule::DISCOVERY);
+        $convention  = $config->ruleEnabled(Rule::CONVENTION);
 
         foreach ($files as $file) {
             $buffer = file_get_contents($file);
@@ -144,16 +179,35 @@ final class SymbolCollector
                 continue;
             }
 
-            $this->collectFile($file, $buffer, $definitions, $references, $stringNames);
+            $this->collectFile(
+                $file,
+                $buffer,
+                $definitions,
+                $references,
+                $stringNames,
+                $discoveries,
+                $conventions,
+                $traitUses,
+                $discovery,
+                $convention,
+            );
         }
 
-        return new CollectedSymbols($definitions, $references, $stringNames);
+        return new CollectedSymbols(
+            $definitions,
+            $references,
+            $stringNames,
+            new IdiomIndex($discoveries, $conventions, $traitUses),
+        );
     }
 
     /**
-     * @param list<Symbol>          $definitions
-     * @param array<string, int>    $references
-     * @param array<string, string> $stringNames
+     * @param list<Symbol>                                            $definitions
+     * @param array<string, int>                                      $references
+     * @param array<string, string>                                   $stringNames
+     * @param array<string, list<array{pattern: string, at: string}>> $discoveries
+     * @param array<string, array<string, string>>                    $conventions
+     * @param array<string, list<string>>                             $traitUses
      */
     private function collectFile(
         string $file,
@@ -161,9 +215,29 @@ final class SymbolCollector
         array &$definitions,
         array &$references,
         array &$stringNames,
+        array &$discoveries,
+        array &$conventions,
+        array &$traitUses,
+        bool $scanDiscovery,
+        bool $scanConvention,
     ): void {
         $tokens = token_get_all($buffer);
         $count  = count($tokens);
+
+        // Idiom detection reads the same token stream the walk below consumes, so
+        // it costs a second pass over an array already in memory and no I/O at
+        // all. Reference detection cannot fold it in: this asks whether the file
+        // BUILDS names, not whether it mentions them.
+        if ($scanDiscovery) {
+            $discovery = IdiomScanner::discovery($tokens, $file);
+
+            if ($discovery !== null) {
+                $discoveries[$discovery['directory']][] = [
+                    'pattern' => $discovery['pattern'],
+                    'at'      => $discovery['at'],
+                ];
+            }
+        }
 
         $namespace     = '';
         $lastDoc       = null;
@@ -173,6 +247,8 @@ final class SymbolCollector
         $pendingBlock  = null;    // what the next '{' opens
         $aliases       = [];      // alias short name => imported short name
         $localRefs     = [];      // names referenced in *this* file
+        $pendingType   = null;    // fqn of the type the next 'type' block declares
+        $typeStack     = [];      // fqn (null when anonymous) per open type body
 
         $i = 0;
 
@@ -181,16 +257,43 @@ final class SymbolCollector
 
             if (is_string($token)) {
                 if ($token === '{') {
-                    $context[]    = $pendingBlock ?? 'other';
+                    $opens        = $pendingBlock ?? 'other';
+                    $context[]    = $opens;
                     $pendingBlock = null;
+
+                    // Shadows $context exactly for 'type' frames, so the name of
+                    // the enclosing declaration is available inside its body —
+                    // which is what a trait use and a suffix concatenation have
+                    // to be attributed to.
+                    if ($opens === 'type') {
+                        $typeStack[] = $pendingType;
+                    }
+
+                    $pendingType = null;
                 } elseif ($token === '}') {
-                    array_pop($context);
+                    if (array_pop($context) === 'type') {
+                        array_pop($typeStack);
+                    }
                 } elseif ($token === ';') {
                     // Statement boundary: a docblock or attribute that did not
                     // bind to a declaration must not leak onto the next one.
+                    //
+                    // $pendingBlock is reset for the same reason. A statement that
+                    // ends in `;` never opened the body it announced, so a
+                    // brace-less `if (class_exists(...)) require ...;` left 'guard'
+                    // pending and stamped it on the next unrelated `{` — a
+                    // foreach, a try, any block that does not announce its own
+                    // kind. A type declared inside that block was then read as
+                    // living in an existence guard and suppressed as a polyfill,
+                    // which is a real orphan turned into silence.
+                    //
+                    // Safe because no construct that sets $pendingBlock has a `;`
+                    // between itself and its own `{`.
                     $lastDoc      = null;
                     $pendingAttrs = [];
                     $abstract     = false;
+                    $pendingBlock = null;
+                    $pendingType  = null;
                 }
 
                 $i++;
@@ -258,12 +361,24 @@ final class SymbolCollector
                     // (`use ($x)`) is the only `use` followed by `(`: skipping it
                     // would run past the closure's own `{` and desync $context.
                     $useNext = $this->nextSignificant($tokens, $i + 1);
+                    $capture = $useNext !== null && $tokens[$useNext] === '(';
 
-                    if (($useNext === null || $tokens[$useNext] !== '(') && end($context) !== 'type') {
+                    if (!$capture && end($context) !== 'type') {
                         $end = $this->skipToSemicolon($tokens, $i + 1);
                         $this->collectImportAliases($tokens, $i + 1, $end, $aliases);
                         $i = $end;
                         continue 2;
+                    }
+
+                    // A trait use inside a type body. Recorded as well as counted
+                    // as a reference, because the convention rule needs to know
+                    // WHICH type consumes the trait: a companion class is spared
+                    // only when its base actually uses the trait that declares
+                    // the suffix, never on the name pattern alone.
+                    $consumer = end($typeStack);
+
+                    if ($scanConvention && !$capture && end($context) === 'type' && is_string($consumer)) {
+                        $this->collectTraitUses($tokens, $i + 1, $consumer, $traitUses);
                     }
 
                     break;
@@ -278,7 +393,8 @@ final class SymbolCollector
                     // else is anonymous (`new class`) or the `::class` constant.
                     if ($nameIndex !== null && $tokens[$nameIndex][0] === T_STRING) {
                         $name         = $tokens[$nameIndex][1];
-                        [$rule, $why] = $this->ruleFor($this->kindFor($id), $name, $pendingAttrs, $lastDoc, $context);
+                        $pendingType  = $namespace === '' ? $name : $namespace . '\\' . $name;
+                        [$rule, $why] = $this->ruleFor($this->kindFor($id), $name, $pendingAttrs, $lastDoc, $context, $namespace);
 
                         $definitions[] = new Symbol(
                             kind:       $this->kindFor($id),
@@ -323,7 +439,7 @@ final class SymbolCollector
                     if ($nameIndex !== null && !is_string($tokens[$nameIndex]) && $tokens[$nameIndex][0] === T_STRING) {
                         if (!$isMethod) {
                             $name         = $tokens[$nameIndex][1];
-                            [$rule, $why] = $this->ruleFor(Symbol::KIND_FUNCTION, $name, $pendingAttrs, $lastDoc, $context);
+                            [$rule, $why] = $this->ruleFor(Symbol::KIND_FUNCTION, $name, $pendingAttrs, $lastDoc, $context, $namespace);
 
                             $definitions[] = new Symbol(
                                 kind:       Symbol::KIND_FUNCTION,
@@ -342,6 +458,16 @@ final class SymbolCollector
                         $lastDoc      = null;
                         $pendingAttrs = [];
                         continue 2;
+                    }
+
+                    break;
+
+                case T_STATIC:
+                    // `static::class . 'Suffix'` — the companion-class idiom.
+                    // `class_basename(static::class) . 'Suffix'` contains the
+                    // same trio, so this one probe covers both shapes.
+                    if ($scanConvention && IdiomScanner::readsStaticClass($tokens, $i)) {
+                        $this->recordConvention($tokens, $i, $file, $token[2], end($typeStack), $conventions);
                     }
 
                     break;
@@ -374,6 +500,71 @@ final class SymbolCollector
             if (isset($localRefs[$alias])) {
                 $references[$imported] = ($references[$imported] ?? 0) + 1;
             }
+        }
+    }
+
+    /**
+     * Record the trait names a `use` statement inside a type body consumes.
+     *
+     * Only the short name is kept, which is what the convention rule compares
+     * against. Method aliasing inside the `{ ... }` block of a trait use is not
+     * a trait name, so the walk stops at the brace.
+     *
+     * @param array<int, array{0: int, 1: string, 2: int}|string> $tokens
+     * @param array<string, list<string>>                         $traitUses
+     */
+    private function collectTraitUses(array $tokens, int $from, string $consumer, array &$traitUses): void
+    {
+        $count = count($tokens);
+
+        for ($i = $from; $i < $count; $i++) {
+            $token = $tokens[$i];
+
+            if (is_string($token)) {
+                if ($token === ';' || $token === '{') {
+                    return;
+                }
+
+                continue;
+            }
+
+            if ($token[0] === T_STRING || $token[0] === T_NAME_QUALIFIED
+                || $token[0] === T_NAME_FULLY_QUALIFIED || $token[0] === T_NAME_RELATIVE) {
+                $traitUses[$consumer][] = $this->shortName($token[1]);
+            }
+        }
+    }
+
+    /**
+     * Register a suffix the type enclosing $at appends to its consumer's runtime
+     * class name, if the expression there is that idiom.
+     *
+     * Keyed suffix => declaring type, so the rule can require BOTH halves of the
+     * claim: the suffix came from a literal in this type, and the class being
+     * judged has a base that uses this type. Either half alone would be a name
+     * pattern.
+     *
+     * @param array<int, array{0: int, 1: string, 2: int}|string> $tokens
+     * @param array<string, array<string, string>>                $conventions
+     */
+    private function recordConvention(
+        array $tokens,
+        int $at,
+        string $file,
+        int $line,
+        mixed $declarer,
+        array &$conventions,
+    ): void {
+        if (!is_string($declarer)) {
+            return;
+        }
+
+        $suffix = IdiomScanner::suffixAfter($tokens, $at);
+
+        if ($suffix !== null) {
+            // First site wins, so a trait that builds the name twice cites one
+            // stable location and two runs report the same evidence.
+            $conventions[$suffix][$declarer] ??= $file . ':' . $line;
         }
     }
 
@@ -466,8 +657,14 @@ final class SymbolCollector
      * @param list<string> $context
      * @return array{0: ?string, 1: ?string} rule name, reason
      */
-    private function ruleFor(string $kind, string $name, array $pendingAttrs, ?string $doc, array $context): array
-    {
+    private function ruleFor(
+        string $kind,
+        string $name,
+        array $pendingAttrs,
+        ?string $doc,
+        array $context,
+        string $namespace = '',
+    ): array {
         $planned = $this->docTag($doc, self::PLANNED_TAG);
 
         if ($planned !== null) {
@@ -483,12 +680,21 @@ final class SymbolCollector
         }
 
         if (in_array('guard', $context, true)) {
-            return [Rule::CONDITIONAL, 'declared inside an existence guard — polyfill or compatibility shim'];
+            return [Rule::CONDITIONAL, (new Catalogue())->get('explain.orphan.guard')];
         }
 
         foreach ($pendingAttrs as $attribute) {
             if (in_array($attribute, self::ENTRYPOINT_ATTRIBUTES, true)) {
                 return [Rule::ENTRYPOINT, 'wired via #[' . $attribute . ']'];
+            }
+        }
+
+        // Declared in a namespace the framework itself loads from. Keyed on the
+        // namespace rather than the class name, so this stays a structural claim
+        // about where the code lives — the same standard every other rule meets.
+        foreach (self::ENTRYPOINT_NAMESPACES as $entrypoint) {
+            if ($namespace === $entrypoint || str_ends_with($namespace, '\\' . $entrypoint)) {
+                return [Rule::ENTRYPOINT, (new Catalogue())->get('explain.orphan.entrypoint', ['namespace' => $entrypoint])];
             }
         }
 

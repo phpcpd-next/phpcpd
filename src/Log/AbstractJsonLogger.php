@@ -12,12 +12,13 @@ declare(strict_types=1);
 
 namespace LucianoPereira\PhpcpdNext\Log;
 
-use function file_put_contents;
 use function json_encode;
 
 use const JSON_PRETTY_PRINT;
 use const JSON_THROW_ON_ERROR;
 use const JSON_UNESCAPED_SLASHES;
+
+use LucianoPereira\PhpcpdNext\LogWriteException;
 
 /**
  * Shared plumbing for the JSON-family reports (Json, Sarif): both project the
@@ -28,13 +29,22 @@ use const JSON_UNESCAPED_SLASHES;
  */
 abstract class AbstractJsonLogger implements Logger
 {
-    public function __construct(protected readonly string $filename) {}
+    protected readonly ReportPath $path;
+    private readonly LogFile $file;
 
-    /** @param array<string, mixed> $document */
+    public function __construct(protected readonly string $filename, ?ReportPath $path = null)
+    {
+        $this->path = $path ?? ReportPath::fromWorkingDirectory();
+        $this->file = new LogFile($filename);
+    }
+
+    /**
+     * @param array<string, mixed> $document
+     * @throws LogWriteException
+     */
     protected function write(array $document): void
     {
-        file_put_contents(
-            $this->filename,
+        $this->file->write(
             json_encode($document, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n",
         );
     }

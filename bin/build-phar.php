@@ -10,9 +10,11 @@ declare(strict_types=1);
  * or directly:
  *     php -d phar.readonly=0 bin/build-phar.php
  *
- * The phar bundles only src/ (the tool has no runtime Composer dependencies);
- * its stub registers a minimal PSR-4 autoloader mirroring composer.json and
- * runs the Application. Output: build/phpcpd-next.phar.
+ * The phar bundles src/ and locale/ — the tool has no runtime Composer
+ * dependencies, but the language catalogues are data it reads at runtime rather
+ * than code it autoloads. Its stub registers a minimal PSR-4 autoloader
+ * mirroring composer.json and runs the Application. Output:
+ * build/phpcpd-next.phar.
  */
 
 if (ini_get('phar.readonly')) {
@@ -44,14 +46,27 @@ $phar->buildFromIterator(
     $root . '/',
 );
 
+// ...and the language files, which are runtime data rather than a dependency:
+// `Strings\Catalogue` reads locale/<code>.php for every sentence the tool
+// prints, so a phar without them cannot print a report, a refusal, or its own
+// help screen. `.gitattributes` keeps them out of export-ignore for the same
+// reason. Paths inside the phar become locale/..., which is where
+// `Catalogue::directory()` looks once src/ resolves to phar://.../src.
+$phar->buildFromIterator(
+    new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($root . '/locale', FilesystemIterator::SKIP_DOTS),
+    ),
+    $root . '/',
+);
+
 // Stub: PHP-version guard + PSR-4 autoloader (matches composer.json) + entry point.
 $stub = <<<'STUB'
 #!/usr/bin/env php
 <?php
 Phar::mapPhar('phpcpd-next.phar');
 
-if (version_compare('8.5.0', PHP_VERSION, '>')) {
-    fwrite(STDERR, 'phpcpd-next requires PHP 8.5 or later; you are using ' . PHP_VERSION . PHP_EOL);
+if (version_compare('8.4.0', PHP_VERSION, '>')) {
+    fwrite(STDERR, 'phpcpd-next requires PHP 8.4 or later; you are using ' . PHP_VERSION . PHP_EOL);
     exit(1);
 }
 

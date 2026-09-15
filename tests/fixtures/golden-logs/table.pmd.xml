@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pmd-cpd>
+  <duplication lines="37" tokens="451" stratum="asserted" confidence="+0.1947">
+    <file path="tests/fixtures/datatable/generated_table_a.php" line="3" endline="40"/>
+    <file path="tests/fixtures/datatable/generated_table_b.php" line="3" endline="39"/>
+    <file path="tests/fixtures/datatable/self_repeating_table.php" line="3" endline="41"/>
+    <codefragment>declare(strict_types=1);
+/*
+ * This file is part of PhpcpdNext.
+ *
+ * (c) 2026 Luciano Federico Pereira
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+/*
+ * Half of a pair of generated tables. The pair is a real clone — whatever
+ * generates one generates the other, so a change to one has to be made to the
+ * other — and the span discriminator must never silence it.
+ */
+
+return [
+    ['code' =&gt; 'IT', 'prefix' =&gt; 39, 'name' =&gt; 'italy', 'active' =&gt; true, 'order' =&gt; 0],
+    ['code' =&gt; 'AT', 'prefix' =&gt; 43, 'name' =&gt; 'austria', 'active' =&gt; true, 'order' =&gt; 1],
+    ['code' =&gt; 'BE', 'prefix' =&gt; 32, 'name' =&gt; 'belgium', 'active' =&gt; true, 'order' =&gt; 2],
+    ['code' =&gt; 'CH', 'prefix' =&gt; 41, 'name' =&gt; 'switzerland', 'active' =&gt; true, 'order' =&gt; 3],
+    ['code' =&gt; 'DE', 'prefix' =&gt; 49, 'name' =&gt; 'germany', 'active' =&gt; true, 'order' =&gt; 4],
+    ['code' =&gt; 'ES', 'prefix' =&gt; 34, 'name' =&gt; 'spain', 'active' =&gt; true, 'order' =&gt; 5],
+    ['code' =&gt; 'FR', 'prefix' =&gt; 33, 'name' =&gt; 'france', 'active' =&gt; true, 'order' =&gt; 6],
+    ['code' =&gt; 'GB', 'prefix' =&gt; 44, 'name' =&gt; 'united kingdom', 'active' =&gt; true, 'order' =&gt; 7],
+    ['code' =&gt; 'NL', 'prefix' =&gt; 31, 'name' =&gt; 'netherlands', 'active' =&gt; true, 'order' =&gt; 8],
+    ['code' =&gt; 'SE', 'prefix' =&gt; 46, 'name' =&gt; 'sweden', 'active' =&gt; true, 'order' =&gt; 9],
+    ['code' =&gt; 'US', 'prefix' =&gt; 1, 'name' =&gt; 'united states', 'active' =&gt; true, 'order' =&gt; 10],
+    ['code' =&gt; 'PT', 'prefix' =&gt; 351, 'name' =&gt; 'portugal', 'active' =&gt; true, 'order' =&gt; 11],
+    ['code' =&gt; 'IE', 'prefix' =&gt; 353, 'name' =&gt; 'ireland', 'active' =&gt; true, 'order' =&gt; 12],
+    ['code' =&gt; 'DK', 'prefix' =&gt; 45, 'name' =&gt; 'denmark', 'active' =&gt; true, 'order' =&gt; 13],
+    ['code' =&gt; 'NO', 'prefix' =&gt; 47, 'name' =&gt; 'norway', 'active' =&gt; true, 'order' =&gt; 14],
+    ['code' =&gt; 'FI', 'prefix' =&gt; 358, 'name' =&gt; 'finland', 'active' =&gt; true, 'order' =&gt; 15],
+    ['code' =&gt; 'PL', 'prefix' =&gt; 48, 'name' =&gt; 'poland', 'active' =&gt; true, 'order' =&gt; 16],
+    ['code' =&gt; 'CZ', 'prefix' =&gt; 420, 'name' =&gt; 'czechia', 'active' =&gt; true, 'order' =&gt; 17],
+    ['code' =&gt; 'GR', 'prefix' =&gt; 30, 'name' =&gt; 'greece', 'active' =&gt; true, 'order' =&gt; 18],
+    ['code' =&gt; 'HU', 'prefix' =&gt; 36, 'name' =&gt; 'hungary', 'active' =&gt; true, 'order' =&gt; 19],
+];
+</codefragment>
+  </duplication>
+</pmd-cpd>

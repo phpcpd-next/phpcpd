@@ -12,13 +12,19 @@ declare(strict_types=1);
 
 namespace LucianoPereira\PhpcpdNext\Log;
 
-use LucianoPereira\PhpcpdNext\CodeCloneMap;
+use LucianoPereira\PhpcpdNext\Presentation\Findings;
 
 /**
  * A report writer. Every file-output format (PMD XML, JSON, SARIF) implements
- * this and serialises the format-neutral CodeCloneMap to its own format and file.
+ * this and serialises the format-neutral findings to its own format and file.
+ *
+ * The unit is {@see Findings} rather than a bare `CodeCloneMap` because the
+ * demote tag has to reach every format: a tag visible only in the console is a
+ * tag a CI pipeline cannot act on, which is the file-list-granularity gap the M4
+ * packet recorded and the M5 charter closes. Every format still reports every
+ * finding — the tag says how confident the tool is, never whether to look.
  */
 interface Logger
 {
-    public function process(CodeCloneMap $clones): void;
+    public function process(Findings $findings): void;
 }

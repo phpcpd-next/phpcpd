@@ -1,0 +1,44 @@
+Found clones (1), duplicated lines (22), files (2):
+
+  - tests/fixtures/type2/rename_base.php:3-33 (31 lines) [literals differ (5)] +2.56
+    tests/fixtures/type2/rename_variant.php:3-33
+    · in summarize
+    → Consider extracting the shared lines into a reusable method, class, or trait.
+    · confidence +2.56 (literal +1.76, lines +0.56, sites +0.17)
+
+    declare(strict_types=1);
+
+    // Type-2 fixture (base). Structurally identical to rename_variant.php but every
+    // identifier, literal, and the function name differ. Raw-content matching cannot
+    // see the clone; token-type normalisation (--fuzzy) can.
+
+    function summarize(array $rows): array
+    {
+        $total = 0;
+        $count = 0;
+        $peak  = 0;
+
+        foreach ($rows as $row) {
+            $value = (int) $row['value'];
+            $total = $total + $value;
+            $count = $count + 1;
+
+            if ($value > $peak) {
+                $peak = $value;
+            }
+        }
+
+        $average           = $count > 0 ? $total / $count : 0;
+        $result            = [];
+        $result['total']   = $total;
+        $result['count']   = $count;
+        $result['peak']    = $peak;
+        $result['average'] = $average;
+
+        return $result;
+    }
+
+1 asserted, 0 demoted.
+33.33% of scanned lines (66) are duplicated code.
+Clone lines: average (31), largest (31).
+

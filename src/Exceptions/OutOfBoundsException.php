@@ -2,9 +2,8 @@
 
 declare(strict_types=1);
 /*
- * This file is part of PHP Copy/Paste Detector (PHPCPD).
+ * This file is part of PhpcpdNext.
  *
- * (c) Sebastian Bergmann <sebastian@phpunit.de>
  * (c) 2026 Luciano Federico Pereira
  *
  * For the full copyright and license information, please view the LICENSE
@@ -13,4 +12,5 @@ declare(strict_types=1);
 
 namespace LucianoPereira\PhpcpdNext;
 
+/** An index past the end of a clone map or token sequence. */
 final class OutOfBoundsException extends \OutOfBoundsException implements Exception {}

@@ -15,7 +15,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        php: ['8.5']
+        # Both supported versions. 8.4 is the floor the code actually needs —
+        # asymmetric visibility and property hooks — and a CI tool is installed
+        # where PHP lags, so the floor is tested rather than assumed.
+        php: ['8.4', '8.5']
 
     steps:
       - uses: actions/checkout@v7
@@ -30,14 +33,64 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      - name: Manifest is valid
+        run: composer validate --strict
+
       - name: Security audit
         run: composer audit
 
       - name: Lint (PHP-CS-Fixer dry-run)
         run: vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no
 
-      - name: Static analysis (PHPStan level max)
+      - name: Static analysis — src/ (PHPStan level max)
         run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+
+      # bench/ is held to the same level as src/, in its own config because it
+      # lists its files one by one. It is not analysed by the line above.
+      - name: Static analysis — bench/ (PHPStan level max)
+        run: vendor/bin/phpstan analyse -c phpstan-bench.neon --memory-limit=1G --no-progress
 
       - name: Tests
         run: vendor/bin/phpunit
+
+      # The gates below fail on things a unit test cannot see: a reporter whose
+      # bytes moved, a translation with a hole in it, a document quoting a
+      # number that has since changed, and a licence claim that stopped being
+      # true. Each prints its own verdict and exits non-zero on its own.
+      - name: Reporter goldens
+        run: php bench/check-log-equivalence.php
+
+      - name: Translations
+        run: php bench/check-locales.php
+
+      - name: Documented facts are current
+        run: php bench/sigil.php --check
+
+      - name: Licence inventory at zero
+        run: php bench/check-provenance.php
+
+      # The tool on its own tree. Not a gate on the finding count — that is a
+      # judgement, and it moves — but on the run completing without refusing,
+      # which is the cheapest end-to-end proof that the CLI still works.
+      - name: Dogfood
+        run: |
+          php phpcpd --orphans .
+          php phpcpd . || [ $? -eq 1 ]
+
+      # The phar is a second way to run the tool, and it breaks in ways the
+      # checkout cannot: it has to carry locale/ as well as src/, and everything
+      # it reads goes through the phar:// wrapper, which glob() does not support.
+      # Both of those shipped broken once, invisibly to every gate above, because
+      # nothing ever built the phar. So it is built and actually run here — on
+      # both PHP versions, which exercises the stub's own version floor too.
+      - name: Phar builds and runs
+        run: |
+          bash bin/build-phar.sh
+          php build/phpcpd-next.phar --version
+          php build/phpcpd-next.phar --help > /dev/null
+          # A non-fallback language proves locale/ made it into the archive and
+          # is reachable through phar://. Compared rather than grepped, so the
+          # check does not depend on the wording of any translation.
+          [ "$(php build/phpcpd-next.phar --version)" \
+            != "$(php build/phpcpd-next.phar --language=es --version)" ]
+          php build/phpcpd-next.phar . || [ $? -eq 1 ]

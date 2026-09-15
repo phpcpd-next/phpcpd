@@ -1,0 +1,8 @@
+{
+    "name": "demo/derived",
+    "autoload": {
+        "psr-4": {
+            "Demo\\Derived\\": "src/"
+        }
+    }
+}

@@ -21,7 +21,6 @@ use function is_file;
 use function is_scalar;
 use function realpath;
 use function parse_ini_file;
-use function sprintf;
 
 use const INI_SCANNER_TYPED;
 
@@ -52,7 +51,8 @@ use const INI_SCANNER_TYPED;
  *   exclude[] = "*.blade.php"
  *   no-suppress = fixtures
  *   fail-on = dead,planned
- */
+ */use LucianoPereira\PhpcpdNext\Strings\Catalogue;
+
 final class ConfigFile
 {
     public const string DEFAULT_NAME = 'phpcpd.ini';
@@ -63,19 +63,19 @@ final class ConfigFile
      * Read $file into the parser's option shape.
      *
      * @param list<OptionDefinition> $definitions
-     * @throws ArgumentsBuilderException
+     * @throws SettingsException
      * @return list<array{0: string, 1: ?string}>
      */
     public static function read(string $file, array $definitions): array
     {
         if (!is_file($file)) {
-            throw new ArgumentsBuilderException('Config file not found: ' . $file);
+            throw new SettingsException((new Catalogue())->get('refuse.notFound.config', ['path' => $file]));
         }
 
         $parsed = @parse_ini_file($file, false, INI_SCANNER_TYPED);
 
         if ($parsed === false) {
-            throw new ArgumentsBuilderException('Could not parse config file: ' . $file);
+            throw new SettingsException((new Catalogue())->get('refuse.unparsable.config', ['path' => $file]));
         }
 
         $known = [];
@@ -89,7 +89,7 @@ final class ConfigFile
         /** @var mixed $value */
         foreach ($parsed as $key => $value) {
             if (!array_key_exists($key, $known)) {
-                throw new ArgumentsBuilderException(sprintf('Unknown setting "%s" in %s', $key, $file));
+                throw new SettingsException((new Catalogue())->get('refuse.unknown.setting', ['name' => $key, 'file' => $file]));
             }
 
             foreach (self::valuesFor($known[$key], $key, $value, $file) as $option) {
@@ -98,6 +98,45 @@ final class ConfigFile
         }
 
         return $options;
+    }
+
+    /**
+     * The option pairs every config file in force contributes, lowest
+     * precedence first, honouring `--config` (exactly that file) and
+     * `--no-config` (none at all). An implicit file is used only when found, so
+     * the common case stays zero-configuration.
+     *
+     * Concatenating layers low-to-high is all the precedence rule needs: the
+     * {@see Settings} fold already lets a later value replace a single-valued
+     * option and append to a repeatable one.
+     *
+     * @param list<array{0: string, 1: ?string}> $cliOptions
+     * @param list<string>                       $paths the directories being scanned
+     * @param list<OptionDefinition>             $definitions
+     * @throws SettingsException
+     * @return list<array{0: string, 1: ?string}>
+     */
+    public static function settings(array $cliOptions, array $paths, array $definitions): array
+    {
+        $explicit = null;
+
+        foreach ($cliOptions as [$name, $value]) {
+            if ($name === 'no-config') {
+                return [];
+            }
+
+            if ($name === 'config' && $value !== null && $value !== '') {
+                $explicit = $value;
+            }
+        }
+
+        $settings = [];
+
+        foreach ($explicit !== null ? [$explicit] : self::discoverAll($paths) as $file) {
+            $settings = [...$settings, ...self::read($file, $definitions)];
+        }
+
+        return $settings;
     }
 
     /**
@@ -194,7 +233,7 @@ final class ConfigFile
     }
 
     /**
-     * @throws ArgumentsBuilderException
+     * @throws SettingsException
      * @return list<array{0: string, 1: ?string}>
      */
     private static function valuesFor(OptionDefinition $definition, string $key, mixed $value, string $file): array
@@ -219,13 +258,16 @@ final class ConfigFile
         }
 
         if (is_bool($value) || !is_scalar($value)) {
-            throw new ArgumentsBuilderException(sprintf('Setting "%s" in %s needs a value', $key, $file));
+            throw new SettingsException((new Catalogue())->get('refuse.needsValue.setting', ['name' => $key, 'file' => $file]));
         }
 
         $invalid = $definition->firstInvalid((string) $value);
 
         if ($invalid !== null) {
-            throw new ArgumentsBuilderException($definition->invalidValueMessage($invalid) . ' in ' . $file);
+            throw new SettingsException((new Catalogue())->get('frame.inFile', [
+                'message' => $definition->invalidValueMessage($invalid),
+                'file'    => $file,
+            ]));
         }
 
         return [[$key, (string) $value]];

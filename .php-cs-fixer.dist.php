@@ -10,31 +10,34 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-$finder = (new PhpCsFixer\Finder())
-    ->in([
-        __DIR__ . '/src',
-        __DIR__ . '/tests',
-        __DIR__ . '/integration',
-    ])
-    // Fixtures are hand-crafted inputs for the clone detector: reformatting them
-    // would shift the line/token counts the tests assert on. Never touch them.
-    ->exclude('fixtures')
-    ->append([__FILE__]);
+$finder = PhpCsFixer\Finder::create()
+    ->in(__DIR__ . '/src')
+    ->in(__DIR__ . '/tests')
+    ->in(__DIR__ . '/bench')
+    ->in(__DIR__ . '/integration')
+    // The locale files are PHP, and were held to no whitespace rule at all
+    // until five translations arrived at once with trailing-newline drift.
+    ->in(__DIR__ . '/locale')
+    ->exclude(['fixtures', 'corpus', 'vendor', 'results']);
 
-// This config codifies the style the codebase already follows (notably the
-// function → const → class import grouping), so a fresh `composer lint` run is
-// green. Add rules deliberately, verifying with `--dry-run` that they don't
-// trigger an unrelated mass reformat.
 return (new PhpCsFixer\Config())
-    ->setRiskyAllowed(true)
+    ->setRiskyAllowed(false)
+    ->setFinder($finder)
     ->setRules([
-        'declare_strict_types'             => true,
-        'no_unused_imports'                => true,
-        'ordered_imports'                  => ['imports_order' => ['function', 'const', 'class'], 'sort_algorithm' => 'none'],
-        'blank_line_between_import_groups' => true,
-        'single_quote'                     => true,
-        'array_syntax'                     => ['syntax' => 'short'],
-        'no_trailing_whitespace'           => true,
-        'single_blank_line_at_eof'         => true,
-    ])
-    ->setFinder($finder);
+        'encoding'                                   => true,
+        'full_opening_tag'                           => true,
+        'line_ending'                                => true,
+        'blank_line_after_opening_tag'               => true,
+        'no_leading_namespace_whitespace'            => true,
+        'no_trailing_whitespace'                     => true,
+        'no_whitespace_in_blank_line'                => true,
+        'single_blank_line_at_eof'                   => true,
+        'no_singleline_whitespace_before_semicolons' => true,
+        'no_empty_statement'                         => true,
+        'no_unused_imports'                          => true,
+        'array_syntax'                               => ['syntax' => 'short'],
+        'normalize_index_brace'                      => true,
+        'trim_array_spaces'                          => true,
+        'whitespace_after_comma_in_array'            => true,
+        'standardize_not_equals'                     => true,
+    ]);

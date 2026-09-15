@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "note": "Pinned SHA values are populated by bench/fetch.sh on first run. Re-run fetch.sh to update.",
+  "note": "Pinned SHA values are populated by bench/fetch.sh on first run. Re-run fetch.sh to update. `strip` names only what neither FileFinder's default excludes nor a detected preset already removes — the tool owns that list, and a second copy here would drift from it.",
   "corpora": {
     "wordpress": {
       "repo": "https://github.com/WordPress/WordPress",
@@ -8,8 +8,6 @@
       "bucket": "untyped-control",
       "description": "Canonical untyped PHP — procedural, hook-driven, minimal type declarations. The null end of the type-density x-axis.",
       "strip": [
-        "vendor",
-        "node_modules",
         "wp-content/uploads"
       ]
     },
@@ -29,32 +27,19 @@
       "repo": "https://github.com/sebastianbergmann/phpunit",
       "sha": "c88a159d6e8c38566517c52ade1f86c30a383da0",
       "bucket": "injection-reflexive",
-      "description": "Evaluate the clone tool on its own author's ecosystem. PHPStan-max-clean. Symbolically apt for a phpcpd lineage paper.",
-      "strip": [
-        "vendor"
-      ]
+      "description": "Evaluate the clone tool on its own author's ecosystem. PHPStan-max-clean. Symbolically apt for a phpcpd lineage paper."
     },
     "php-parser": {
       "repo": "https://github.com/nikic/PHP-Parser",
       "sha": "50f0d9c9d0e3cff1163c959c50aaaaa4a7115f08",
       "bucket": "injection-dogfood",
-      "description": "Typed and well-understood. Dep used by the type-density metric itself.",
-      "strip": [
-        "vendor"
-      ]
+      "description": "Typed and well-understood. Dep used by the type-density metric itself."
     },
     "firefly-iii": {
       "repo": "https://github.com/firefly-iii/firefly-iii",
       "sha": "4b80df1f44bce2f242b754145e912f2a0ca3a0d7",
       "bucket": "ecological",
-      "description": "Laravel app running Larastan MAX — confirmed high type-density. Accumulates duplicated controllers, form requests, validation blocks. The typed-and-cloney quadrant.",
-      "strip": [
-        "vendor",
-        "node_modules",
-        "storage",
-        "bootstrap/cache",
-        "database/migrations"
-      ]
+      "description": "Laravel app running Larastan MAX — confirmed high type-density. Accumulates duplicated controllers, form requests, validation blocks. The typed-and-cloney quadrant."
     }
   }
 }

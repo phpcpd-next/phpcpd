@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Build a distributable phpcpd-next.phar into build/.
 #
-# The phar bundles src/ only (no runtime Composer dependencies) and is runnable
-# directly: `php build/phpcpd-next.phar <dir>` or `./build/phpcpd-next.phar <dir>`.
+# The phar bundles src/ and locale/ — no runtime Composer dependencies, so this
+# needs neither `composer install` nor a vendor/ directory, only PHP and a
+# checkout. It is runnable directly:
+# `php build/phpcpd-next.phar <dir>` or `./build/phpcpd-next.phar <dir>`.
 #
 # Usage: bash bin/build-phar.sh
 set -euo pipefail

@@ -1,6 +1,6 @@
 {
     "name": "phpcpd-next/phpcpd",
-    "description": "phpcpd-next — Copy/Paste (clone) detector for PHP 8.5+ with Type-1/2/3 detection. The maintained successor to the archived sebastianbergmann/phpcpd.",
+    "description": "phpcpd-next — Copy/Paste (clone) detector for PHP 8.4+ with Type-1/2/3 detection. The maintained successor to the archived sebastianbergmann/phpcpd.",
     "type": "library",
     "keywords": [
         "phpcpd",
@@ -12,16 +12,11 @@
         "ci"
     ],
     "homepage": "https://github.com/phpcpd-next/phpcpd",
-    "license": "BSD-3-Clause",
+    "license": "MIT",
     "authors": [
         {
-            "name": "Sebastian Bergmann",
-            "email": "sebastian@phpunit.de",
-            "role": "Original author"
-        },
-        {
             "name": "Luciano Federico Pereira",
-            "role": "Fork maintainer"
+            "role": "Author and maintainer"
         }
     ],
     "support": {
@@ -30,7 +25,7 @@
     },
     "config": {
         "platform": {
-            "php": "8.5.0"
+            "php": "8.4.1"
         },
         "optimize-autoloader": true,
         "sort-packages": true
@@ -38,7 +33,7 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "php": ">=8.5",
+        "php": ">=8.4",
         "ext-dom": "*",
         "ext-mbstring": "*"
     },
@@ -59,18 +54,24 @@
     "require-dev": {
         "friendsofphp/php-cs-fixer": "^3.64",
         "phpstan/phpstan": "^2.2",
-        "phpunit/phpunit": "^11.0 || ^12.0 || ^13.0",
-        "rector/rector": "^2.0"
+        "phpunit/phpunit": "^11.0 || ^12.0 || ^13.0"
     },
     "suggest": {
         "phpunit/phpunit": "To use the PHPUnit integration (AssertNoDuplication trait / DuplicationConstraint) for duplication-as-a-test"
     },
     "scripts": {
-        "lint":     "php-cs-fixer fix --dry-run --diff",
-        "lint:fix": "php-cs-fixer fix",
-        "analyse":  "phpstan analyse --memory-limit=1G",
-        "test":     "phpunit",
-        "check":    ["@lint", "@analyse", "@test"],
-        "release":  "bash bin/release.sh"
+        "lint":          "php-cs-fixer fix --dry-run --diff",
+        "lint:fix":      "php-cs-fixer fix",
+        "analyse":       "phpstan analyse --memory-limit=1G",
+        "analyse:bench": "phpstan analyse -c phpstan-bench.neon --memory-limit=1G",
+        "test":          "phpunit",
+        "bench:verify":  ["@php bench/self-test.php"],
+        "check":         ["@lint", "@analyse", "@analyse:bench", "@test", "@docs:check", "@logs:check", "@locales:check", "@bench:verify"],
+        "docs:facts":    "@php bench/collect-facts.php",
+        "docs:render":   "@php bench/sigil.php",
+        "docs:check":    "@php bench/sigil.php --check",
+        "logs:check":    "@php bench/check-log-equivalence.php",
+        "locales:check": "@php bench/check-locales.php",
+        "release":       "bash bin/release.sh"
     }
 }

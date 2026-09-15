@@ -31,6 +31,9 @@ declare(strict_types=1);
  *
  * Usage: php bench/run-e2.php [--sample N] [--min-tokens N] [--operator ssdiff|ssdiff_bool]
  *
+ * --sample defaults to every eligible function: the population, not a sample of
+ * it. Pass a number only to cut a run short while developing.
+ *
  * --operator selects which same-shape-different-type injection to score: ssdiff
  * (int/float -> string, the default, feeds summary.tsv) or ssdiff_bool (bool ->
  * int, feeds summary-ssdiff_bool.tsv). Each pairs with its own eligibility
@@ -41,7 +44,11 @@ require_once __DIR__ . '/lib.php';
 require_once __DIR__ . '/injectors.php';
 
 $opts      = getopt('', ['sample:', 'min-tokens:', 'operator:']);
-$sample    = (int) ($opts['sample'] ?? 40);
+// A census by default, because that is what the paper's table claims to be:
+// "over the full eligible-function population". It defaulted to 40, so the
+// committed summaries were samples of a population the paper said it had
+// measured whole, and no two runs of the two could be compared.
+$sample    = (int) ($opts['sample'] ?? PHP_INT_MAX);
 $minTokens = (int) ($opts['min-tokens'] ?? 20);
 $operator  = (string) ($opts['operator'] ?? 'ssdiff');
 
@@ -138,20 +145,20 @@ function bcb_run_corpus(string $name, string $dir, int $sample, int $minTokens, 
         $row['pairs']++;
 
         // the ssdiff-family variant is NOT a clone → a detected clone is a false positive.
-        if (bcb_pair_is_clone($code, $variant, $minTokens, ['fuzzy' => true])) {
+        if (bcb_pair_is_clone($code, $variant, $minTokens, ['fuzzy' => true, 'typeAnchored' => false])) {
             $row['fp_fuzzy']++;
         }
 
-        if (bcb_pair_is_clone($code, $variant, $minTokens, ['typeAnchored' => true])) {
+        if (bcb_pair_is_clone($code, $variant, $minTokens, ['fuzzy' => false, 'typeAnchored' => true])) {
             $row['fp_anchored']++;
         }
 
         // type2 IS a clone → a missed pair is a false negative (recall loss).
-        if (!bcb_pair_is_clone($code, $type2, $minTokens, ['fuzzy' => true])) {
+        if (!bcb_pair_is_clone($code, $type2, $minTokens, ['fuzzy' => true, 'typeAnchored' => false])) {
             $row['miss_fuzzy']++;
         }
 
-        if (!bcb_pair_is_clone($code, $type2, $minTokens, ['typeAnchored' => true])) {
+        if (!bcb_pair_is_clone($code, $type2, $minTokens, ['fuzzy' => false, 'typeAnchored' => true])) {
             $row['miss_anchored']++;
         }
     }

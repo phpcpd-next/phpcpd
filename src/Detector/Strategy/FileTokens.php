@@ -12,6 +12,8 @@ declare(strict_types=1);
 
 namespace LucianoPereira\PhpcpdNext\Detector\Strategy;
 
+use function hash;
+
 /**
  * The tokenization of a single file: everything the Rabin–Karp scanner needs to
  * find clones, with the source text already discarded.
@@ -31,6 +33,34 @@ namespace LucianoPereira\PhpcpdNext\Detector\Strategy;
  */
 final readonly class FileTokens
 {
+    /**
+     * How many bytes one significant token occupies in {@see $signature}.
+     *
+     * One `xxh64` over the token's type and its text together. It was five — a
+     * type truncated to a byte plus a 32-bit crc of the text — and 32 bits is
+     * narrow enough that two different literals in WordPress hashed alike, so
+     * the matcher reported files holding them as an exact copy of one another.
+     *
+     * Stated once, here, because it was stated in eight places: this class, the
+     * five unified-engine classes that slice the signature, and two tests. Every
+     * one of them had to be found by hand when the width changed.
+     */
+    public const int TOKEN_BYTES = 8;
+
+    /**
+     * One token's bytes: a single hash over its type and its text together.
+     *
+     * Type and text are hashed as one value rather than concatenated as two
+     * fields, so the width above is the whole identity of a token and nothing
+     * reads inside it. Every consumer of a signature treats a token as an
+     * opaque fixed-width blob and compares blobs, which is what let the width
+     * change at all.
+     */
+    public static function token(int $type, string $text): string
+    {
+        return hash('xxh64', $type . "\0" . $text, true);
+    }
+
     /**
      * @param list<int> $tokenLines
      * @param list<int> $tokenRealLines

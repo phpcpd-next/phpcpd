@@ -1,0 +1,54 @@
+Found clones (1), reordered (1), duplicated lines (90), files (4):
+
+  - tests/fixtures/type3/clone_base.php:3-41 (39 lines) [reordered] +1.39
+    tests/fixtures/type3/clone_exact_copy.php:3-40
+    tests/fixtures/type3/clone_gapped.php:3-43
+    tests/fixtures/type3/clone_wide_gap.php:3-45
+    · in processLedger
+    → Near-miss clone — consider parameterizing the diverging part or aligning both copies.
+    · confidence +1.39 (literal +1.76, sites -1.00, lines +0.56)
+
+    declare(strict_types=1);
+
+    // Type-3 fixture (base). Identical to clone_gapped.php except clone_gapped.php
+    // inserts ONE statement mid-body. Same function name to isolate the gap as the
+    // only difference. Never loaded — phpcpd only tokenises these files.
+
+    function processLedger(array $entries): array
+    {
+        $debits  = 0;
+        $credits = 0;
+        $balance = 0;
+        $largest = 0;
+
+        foreach ($entries as $entry) {
+            $amount = (int) $entry['amount'];
+            $type   = (string) $entry['type'];
+
+            if ($type === 'debit') {
+                $debits  += $amount;
+                $balance -= $amount;
+            } else {
+                $credits += $amount;
+                $balance += $amount;
+            }
+
+            if ($amount > $largest) {
+                $largest = $amount;
+            }
+        }
+
+        $report            = [];
+        $report['debits']  = $debits;
+        $report['credits'] = $credits;
+        $report['balance'] = $balance;
+        $report['largest'] = $largest;
+        $report['net']     = $credits - $debits;
+
+        return $report;
+    }
+
+1 asserted, 0 demoted.
+53.25% of scanned lines (169) are duplicated code.
+Clone lines: average (39), largest (39).
+

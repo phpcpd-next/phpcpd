@@ -35,7 +35,7 @@ use const JSON_THROW_ON_ERROR;
 use const LOCK_EX;
 use const SORT_STRING;
 
-use LucianoPereira\PhpcpdNext\Arguments;
+use LucianoPereira\PhpcpdNext\Settings;
 use LucianoPereira\PhpcpdNext\CodeClone;
 use LucianoPereira\PhpcpdNext\CodeCloneFile;
 use LucianoPereira\PhpcpdNext\CodeCloneMap;
@@ -51,7 +51,7 @@ use LucianoPereira\PhpcpdNext\CodeCloneMap;
  */
 final class CloneCache
 {
-    private const int VERSION = 2;
+    private const int VERSION = 5;
 
     private readonly string $dir;
 
@@ -110,7 +110,19 @@ final class CloneCache
         $clonesData = [];
 
         foreach ($clones->clones() as $clone) {
-            $clonesData[] = $clone->toArray();
+            $entry = $clone->toArray();
+
+            // Added here rather than in `toArray()`, which is also the JSON
+            // report's shape: where a match begins in the significant-token
+            // stream is an index this tool uses to ask what a clone covers, and
+            // means nothing to a reader of the report.
+            foreach (array_values($clone->files()) as $at => $file) {
+                if ($file->startToken !== null && isset($entry['files'][$at])) {
+                    $entry['files'][$at]['startToken'] = $file->startToken;
+                }
+            }
+
+            $clonesData[] = $entry;
         }
 
         try {
@@ -132,16 +144,14 @@ final class CloneCache
      * Stable fingerprint for a detection configuration. Used as the cache filename
      * so different algorithm/threshold combos coexist in the same cache directory.
      */
-    public static function configFingerprint(Arguments $args): string
+    public static function configFingerprint(Settings $settings): string
     {
         return hash('sha256', json_encode([
-            'algorithm'    => $args->algorithm() ?? 'rabin-karp',
-            'minTokens'    => $args->tokensThreshold(),
-            'minLines'     => $args->linesThreshold(),
-            'fuzzy'        => $args->fuzzy(),
-            'editDistance' => $args->editDistance(),
-            'headEquality' => $args->headEquality(),
-            'similarity'   => $args->similarity(),
+            'algorithm'    => $settings->algorithm ?? 'rabin-karp',
+            'minTokens'    => $settings->minTokens,
+            'minLines'     => $settings->minLines,
+            'fuzzy'        => $settings->normalization->name,
+            'similarity'   => $settings->minSimilarity,
         ], JSON_THROW_ON_ERROR));
     }
 
@@ -225,9 +235,13 @@ final class CloneCache
             }
         }
 
-        // Restore the exact duplicated-line count. map->add() computes it as
-        // lines*(files-1) per call, which is correct for 2-file clones but
-        // diverges for 3+-file clones built incrementally by the strategies.
+        // Restore the exact duplicated-line count rather than recomputing it.
+        // map->add() counts the union of the lines its clones cover, and a warm
+        // run replays the clones in an order the cold run need not have used;
+        // taking the recorded total keeps a cached run byte-identical to the run
+        // that filled the cache. VERSION was bumped to 3 when the counting moved
+        // from summed lengths to covered lines, because a cache written by the
+        // old code holds a total the new code would never produce.
         $duplicatedLines = $data['duplicatedLines'] ?? null;
 
         if (is_int($duplicatedLines)) {
@@ -294,6 +308,25 @@ final class CloneCache
             return null;
         }
 
-        return new CodeCloneFile($path, $startLine);
+        // Absent for a strategy that does not measure occurrences, and for any
+        // entry written before they were recorded; null then means the same
+        // thing on the way out as it did on the way in.
+        //
+        // All three are read. `tokens` was written and then dropped here, so a
+        // warm run reconstructed occurrences the cold run had measured as
+        // unmeasured — and `startToken` decides how `Strata` and
+        // `ConfidenceFeatures` ask what a clone covers, which is the one thing
+        // a cached run must not answer differently.
+        $lines      = $data['lines'] ?? null;
+        $tokens     = $data['tokens'] ?? null;
+        $startToken = $data['startToken'] ?? null;
+
+        return new CodeCloneFile(
+            $path,
+            $startLine,
+            is_int($lines) ? $lines : null,
+            is_int($tokens) ? $tokens : null,
+            is_int($startToken) ? $startToken : null,
+        );
     }
 }

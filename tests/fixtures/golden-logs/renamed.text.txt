@@ -1,0 +1,11 @@
+Found clones (1), duplicated lines (22), files (2):
+
+  - tests/fixtures/type2/rename_base.php:3-33 (31 lines) [literals differ (5)] +2.56
+    tests/fixtures/type2/rename_variant.php:3-33
+    · in summarize
+    → Consider extracting the shared lines into a reusable method, class, or trait.
+
+1 asserted, 0 demoted.
+33.33% of scanned lines (66) are duplicated code.
+Clone lines: average (31), largest (31).
+

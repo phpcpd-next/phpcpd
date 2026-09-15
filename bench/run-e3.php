@@ -18,19 +18,27 @@ declare(strict_types=1);
  * inconsistent clones breed latent bugs.
  *
  * Usage:
- *   php bench/run-e3.php [repo_dir] [--min-tokens N] [--edit-distance N] [--max-files N] [--out file.json]
+ *   php bench/run-e3.php [repo_dir] [--min-tokens N] [--max-files N]
+ *                        [--algorithm unified|rabin-karp|tokenbag] [--out file.json]
  *   (default repo_dir = bench/corpus/firefly-iii)
+ *
+ * --algorithm defaults to unified. The published E3 run used the suffix tree,
+ * which was removed in 2.0.0; its recorded results stay under bench/results/
+ * unchanged, and a bare invocation now replays the same protocol with the engine
+ * that succeeded it — which reports the divergent token ranges rather than the
+ * boolean the published run scored.
  */
 
 require_once __DIR__ . '/lib.php';
+require_once __DIR__ . '/harness.php';
 
-$opts        = getopt('', ['min-tokens:', 'edit-distance:', 'max-files:', 'out:'], $restIdx);
-$positional  = array_slice($argv, $restIdx);
+$opts        = getopt('', ['min-tokens:', 'max-files:', 'out:', 'algorithm:'], $restIdx);
+$positional  = array_slice(bcb_argv(), (int) $restIdx);
 $repo        = $positional[0] ?? (__DIR__ . '/corpus/firefly-iii');
 $minTokens   = (int) ($opts['min-tokens'] ?? 50);
-$editDist    = (int) ($opts['edit-distance'] ?? 3);
 $maxFiles    = (int) ($opts['max-files'] ?? 200);
-$outFile     = $opts['out'] ?? null;
+$outFile     = is_string($opts['out'] ?? null) ? $opts['out'] : null;
+$algorithm   = is_string($opts['algorithm'] ?? null) ? $opts['algorithm'] : 'unified';
 
 if (!is_dir($repo . '/.git')) {
     fwrite(STDERR, "Usage: php bench/run-e3.php <git_repo_dir> [...]\n  repo_dir must be a git repository.\n");
@@ -40,20 +48,79 @@ if (!is_dir($repo . '/.git')) {
 $repo  = (string) realpath($repo);
 $files = bcb_files($repo, ['vendor', 'node_modules', 'storage', 'bootstrap/cache', 'database/migrations']);
 
-// Sort by most-recently-modified so --max-files keeps the most active code.
-usort($files, static fn(string $a, string $b) => filemtime($b) <=> filemtime($a));
+// Sort by most-recently-modified so --max-files keeps the most active code —
+// but read "modified" from git, not from the filesystem. A fresh clone stamps
+// every file with the checkout time, so a filesystem-mtime sort over one silently
+// degenerates into path order and the slice stops being the active code at all.
+// One `git log` pass gives the last commit that touched each path, which is both
+// what the experiment means and reproducible from any clone of the pinned SHA.
+$touched = bcb_last_touched($repo);
+usort($files, static function (string $a, string $b) use ($repo, $touched): int {
+    $ra = substr($a, strlen($repo) + 1);
+    $rb = substr($b, strlen($repo) + 1);
+
+    return [$touched[$rb] ?? 0, $rb] <=> [$touched[$ra] ?? 0, $ra];
+});
 
 if ($maxFiles > 0) {
     $files = array_slice($files, 0, $maxFiles);
 }
 
-fwrite(STDERR, sprintf("Scanning %s (%d files, suffixtree ed=%d, min-tokens=%d)...\n", $repo, count($files), $editDist, $minTokens));
+fwrite(STDERR, sprintf(
+    "Scanning %s (%d files, %s, min-tokens=%d)...\n",
+    $repo,
+    count($files),
+    $algorithm,
+    $minTokens,
+));
 
 $map = bcb_detect($files, [
-    'algorithm'    => 'suffixtree',
-    'editDistance' => $editDist,
-    'minTokens'    => $minTokens,
+    'algorithm' => $algorithm,
+    'minTokens' => $minTokens,
 ]);
+
+/**
+ * The commit time of the last commit touching each path, for the whole repo, in
+ * one traversal.
+ *
+ * Asking git once per file would be 1,400 processes; asking it once and reading
+ * the name-status stream costs one. Paths are recorded the first time they are
+ * seen, and the log arrives newest-first, so the first sighting is the latest.
+ *
+ * @return array<string, int> path relative to the repo => commit timestamp
+ */
+function bcb_last_touched(string $repo): array
+{
+    $command = 'git -C ' . escapeshellarg($repo) . ' log --format=%x01%ct --name-only 2>/dev/null';
+    $stream  = popen($command, 'r');
+
+    if (!is_resource($stream)) {
+        return [];
+    }
+
+    $touched = [];
+    $time    = 0;
+
+    while (($line = fgets($stream)) !== false) {
+        $line = rtrim($line, "\n");
+
+        if ($line === '') {
+            continue;
+        }
+
+        if ($line[0] === "\x01") {
+            $time = (int) substr($line, 1);
+
+            continue;
+        }
+
+        $touched[$line] ??= $time;
+    }
+
+    pclose($stream);
+
+    return $touched;
+}
 
 /**
  * git: [sha, unixTime] of the commit that last touched a path (relative to repo),
@@ -91,39 +158,56 @@ foreach ($map->clones() as $clone) {
         continue;
     }
 
-    $relA = str_replace($repo . '/', '', $cloneFiles[0]->name());
-    $relB = str_replace($repo . '/', '', $cloneFiles[1]->name());
+    // EVERY pair inside the clone, not just the first two. A clone class can name
+    // more than two copies — the unified engine's pairs-to-classes pass makes that
+    // the normal case rather than the exception — and reading only files[0] and
+    // files[1] would leave most of a five-copy class unexamined, so a diverged
+    // pair inside it would go unreported for no reason but the reading order.
+    $count = count($cloneFiles);
 
-    // Dedup by unordered file pair — the same two controllers clone in many spots.
-    $key = $relA < $relB ? "$relA\x00$relB" : "$relB\x00$relA";
+    for ($i = 0; $i < $count; $i++) {
+        for ($j = $i + 1; $j < $count; $j++) {
+            $relA = str_replace($repo . '/', '', $cloneFiles[$i]->name);
+            $relB = str_replace($repo . '/', '', $cloneFiles[$j]->name);
 
-    if (isset($seen[$key])) {
-        continue;
+            if ($relA === $relB) {
+                continue; // two copies inside one file: no staleness gap to measure
+            }
+
+            // Dedup by unordered file pair — the same two controllers clone in
+            // many spots.
+            $key = $relA < $relB ? "$relA\x00$relB" : "$relB\x00$relA";
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+
+            $commitA = bcb_last_commit($repo, $relA);
+            $commitB = bcb_last_commit($repo, $relB);
+
+            if ($commitA === null || $commitB === null || $commitA[0] === $commitB[0]) {
+                continue; // same commit (maintained together) or unknown
+            }
+
+            // Staleness: how long one copy sat untouched after its sibling was
+            // last patched.
+            $gapDays = (int) round(abs($commitA[1] - $commitB[1]) / 86400);
+
+            $findings[] = [
+                'file_a'         => $relA,
+                'line_a'         => $cloneFiles[$i]->startLine,
+                'last_commit_a'  => substr($commitA[0], 0, 12),
+                'file_b'         => $relB,
+                'line_b'         => $cloneFiles[$j]->startLine,
+                'last_commit_b'  => substr($commitB[0], 0, 12),
+                'lines'          => $clone->numberOfLines(),
+                'staleness_days' => $gapDays,
+                'note'           => 'Inconsistent (gapped) clone; copies last touched ' . $gapDays . ' days apart',
+            ];
+        }
     }
-
-    $seen[$key] = true;
-
-    $commitA = bcb_last_commit($repo, $relA);
-    $commitB = bcb_last_commit($repo, $relB);
-
-    if ($commitA === null || $commitB === null || $commitA[0] === $commitB[0]) {
-        continue; // same commit (maintained together) or unknown → not a divergence
-    }
-
-    // Staleness: how long one copy sat untouched after its sibling was last patched.
-    $gapDays = (int) round(abs($commitA[1] - $commitB[1]) / 86400);
-
-    $findings[] = [
-        'file_a'        => $relA,
-        'line_a'        => $cloneFiles[0]->startLine(),
-        'last_commit_a' => substr($commitA[0], 0, 12),
-        'file_b'        => $relB,
-        'line_b'        => $cloneFiles[1]->startLine(),
-        'last_commit_b' => substr($commitB[0], 0, 12),
-        'lines'         => $clone->numberOfLines(),
-        'staleness_days' => $gapDays,
-        'note'          => 'Inconsistent (gapped) clone; copies last touched ' . $gapDays . ' days apart',
-    ];
 }
 
 // Rank by staleness gap (most-diverged first), then by clone size.

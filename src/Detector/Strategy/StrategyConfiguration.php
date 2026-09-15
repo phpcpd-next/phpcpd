@@ -2,9 +2,8 @@
 
 declare(strict_types=1);
 /*
- * This file is part of PHP Copy/Paste Detector (PHPCPD).
+ * This file is part of PhpcpdNext.
  *
- * (c) Sebastian Bergmann <sebastian@phpunit.de>
  * (c) 2026 Luciano Federico Pereira
  *
  * For the full copyright and license information, please view the LICENSE
@@ -13,55 +12,28 @@ declare(strict_types=1);
 
 namespace LucianoPereira\PhpcpdNext\Detector\Strategy;
 
-use LucianoPereira\PhpcpdNext\Arguments;
-
+/**
+ * The slice of a run's settings the clone engine is allowed to see: thresholds
+ * and normalization switches, nothing else. Strategies read these five values
+ * and no others, so handing them the whole {@see \LucianoPereira\PhpcpdNext\Settings}
+ * would hand them scan paths, log targets, and CLI flags they must never depend
+ * on — this record is the boundary that keeps the engine embeddable.
+ *
+ * How much of a token the matcher sees is one value and not two: see
+ * {@see Normalization}, which replaced a `fuzzy`/`typeAnchored` pair whose four
+ * combinations covered three behaviours.
+ *
+ * Deliberately without defaults: every value is required, because the defaults
+ * live in exactly one place ({@see \LucianoPereira\PhpcpdNext\Settings} property
+ * initializers) and a second copy here is how the two would drift apart.
+ * Construct one via {@see \LucianoPereira\PhpcpdNext\Settings::strategy()}.
+ */
 final readonly class StrategyConfiguration
 {
-    private int $minLines;
-    private int $minTokens;
-    private int $editDistance;
-    private int $headEquality;
-    private bool $fuzzy;
-    private bool $typeAnchored;
-    private float $similarity;
-
-    public function __construct(Arguments $arguments)
-    {
-        $this->minLines     = $arguments->linesThreshold();
-        $this->minTokens    = $arguments->tokensThreshold();
-        $this->fuzzy        = $arguments->fuzzy();
-        $this->typeAnchored = $arguments->typeAnchored();
-        $this->editDistance = $arguments->editDistance();
-        $this->headEquality = $arguments->headEquality();
-        $this->similarity   = $arguments->similarity();
-    }
-
-    public function minLines(): int
-    {
-        return $this->minLines;
-    }
-    public function minTokens(): int
-    {
-        return $this->minTokens;
-    }
-    public function fuzzy(): bool
-    {
-        return $this->fuzzy;
-    }
-    public function typeAnchored(): bool
-    {
-        return $this->typeAnchored;
-    }
-    public function headEquality(): int
-    {
-        return $this->headEquality;
-    }
-    public function editDistance(): int
-    {
-        return $this->editDistance;
-    }
-    public function similarity(): float
-    {
-        return $this->similarity;
-    }
+    public function __construct(
+        public int $minLines,
+        public int $minTokens,
+        public Normalization $normalization,
+        public float $minSimilarity,
+    ) {}
 }

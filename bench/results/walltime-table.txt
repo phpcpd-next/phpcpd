@@ -1,0 +1,7 @@
+    corpus              files   default   unified    ratio
+    symfony-string         33    0.212s    2.221s   10.46x
+    php-parser            340    0.390s    3.149s    8.08x
+    symfony-console       359    0.951s    8.858s    9.32x
+    firefly-iii          1291    4.606s   53.319s   11.58x
+    wordpress            1848   29.041s   99.889s    3.44x
+    phpunit              2689    3.719s  118.650s   31.90x

@@ -3,9 +3,10 @@
 declare(strict_types=1);
 
 // Type-3 fixture (wider gap). Identical to clone_base.php except for the TWO
-// inserted statements marked below. A wider gap costs more edits to bridge, so
-// it requires a larger --edit-distance budget than the single-statement gap in
-// clone_gapped.php — this is the recall-vs-edit-distance relationship.
+// inserted statements marked below. A wider gap costs more of the divergence
+// budget to bridge than the single-statement gap in clone_gapped.php — the
+// unified engine spends that budget as a share of the candidate's own length
+// (BandedAligner::RATIO), so this pair is the wider end of the same relationship.
 
 function processLedger(array $entries): array
 {

@@ -74,7 +74,7 @@ final class DuplicationConstraint extends Constraint
         $where = [];
 
         foreach ($clone->files() as $file) {
-            $where[] = $file->name() . ':' . $file->startLine();
+            $where[] = $file->name . ':' . $file->startLine;
         }
 
         return sprintf(

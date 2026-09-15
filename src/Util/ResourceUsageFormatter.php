@@ -19,7 +19,8 @@ use function sprintf;
  * Formats run time + peak memory, and — unlike the generic phpunit/php-timer
  * formatter — domain throughput (files scanned and files/second), which is the
  * number that actually tells you how a clone scan performed on a given codebase.
- */
+ */use LucianoPereira\PhpcpdNext\Strings\Catalogue;
+
 final class ResourceUsageFormatter
 {
     private const float BYTES_PER_MEGABYTE = 1_048_576.0;
@@ -27,21 +28,25 @@ final class ResourceUsageFormatter
 
     public function format(float $seconds, int $filesScanned = 0): string
     {
-        $line = sprintf(
-            'Time: %s, Memory: %.2f MB',
-            $this->duration($seconds),
-            memory_get_peak_usage(true) / self::BYTES_PER_MEGABYTE,
-        );
+        $line = (new Catalogue())->get('report.run.usage', [
+            'duration' => $this->duration($seconds),
+            'memory'   => sprintf('%.2f', memory_get_peak_usage(true) / self::BYTES_PER_MEGABYTE),
+        ]);
 
         if ($filesScanned <= 0) {
             return $line;
         }
 
+        $strings = new Catalogue();
+
         if ($seconds > 0.0) {
-            return $line . sprintf(' — %d files (%.1f files/s)', $filesScanned, $filesScanned / $seconds);
+            return $line . $strings->get('report.run.throughput', [
+                'count' => $filesScanned,
+                'rate'  => sprintf('%.1f', $filesScanned / $seconds),
+            ]);
         }
 
-        return $line . sprintf(' — %d files', $filesScanned);
+        return $line . $strings->get('report.run.files', ['count' => $filesScanned]);
     }
 
     private function duration(float $seconds): string

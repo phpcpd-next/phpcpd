@@ -1,0 +1,11 @@
+Found clones (1), duplicated lines (18), files (2):
+
+  - tests/fixtures/with_clones/Alpha.php:3-28 (26 lines) +2.43
+    tests/fixtures/with_clones/Beta.php:3-28
+    · in processUserRecords
+    → Consider extracting the shared lines into a reusable method, class, or trait.
+
+1 asserted, 0 demoted.
+32.14% of scanned lines (56) are duplicated code.
+Clone lines: average (26), largest (26).
+

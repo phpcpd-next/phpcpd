@@ -1,0 +1,13 @@
+Found clones (1), reordered (1), duplicated lines (90), files (4):
+
+  - tests/fixtures/type3/clone_base.php:3-41 (39 lines) [reordered] +1.39
+    tests/fixtures/type3/clone_exact_copy.php:3-40
+    tests/fixtures/type3/clone_gapped.php:3-43
+    tests/fixtures/type3/clone_wide_gap.php:3-45
+    · in processLedger
+    → Near-miss clone — consider parameterizing the diverging part or aligning both copies.
+
+1 asserted, 0 demoted.
+53.25% of scanned lines (169) are duplicated code.
+Clone lines: average (39), largest (39).
+

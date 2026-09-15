@@ -1,0 +1,107 @@
+Found clones (3), duplicated lines (59), files (4):
+
+  - tests/fixtures/strata/service_a.php:3-65 (63 lines) +1.53
+    tests/fixtures/strata/service_b.php:3-63
+    · in totals
+    → Consider extracting the shared lines into a reusable method, class, or trait.
+    · confidence +1.53 (literal +1.63, lines -0.34, sites +0.17)
+
+    declare(strict_types=1);
+    /*
+     * This file is part of PhpcpdNext.
+     *
+     * (c) 2026 Luciano Federico Pereira
+     *
+     * For the full copyright and license information, please view the LICENSE
+     * file that was distributed with this source code.
+     */
+
+    /*
+     * Ordinary program text with a real clone: not a table, not a registration file,
+     * so it is ASSERTED. The stratification has to leave normal duplication alone or
+     * it is not a lens, it is a filter.
+     */
+
+
+    final class ServiceA
+    {
+        public function totals(array $rows): array
+        {
+            $sum = 0;
+            $count = 0;
+            $largest = 0;
+            $smallest = 0;
+            $taxed = 0;
+            $refunded = 0;
+
+            foreach ($rows as $row) {
+                $sum += $row['amount'];
+                $count++;
+
+                if ($row['amount'] > $largest) {
+                    $largest = $row['amount'];
+                }
+
+                if ($row['amount'] < $smallest) {
+                    $smallest = $row['amount'];
+                }
+
+                if ($row['taxable']) {
+                    $taxed += $row['amount'];
+                }
+
+                if ($row['refunded']) {
+                    $refunded += $row['amount'];
+                }
+            }
+
+            if ($count === 0) {
+                return ['sum' => 0, 'average' => 0, 'largest' => 0, 'smallest' => 0];
+            }
+
+            return [
+                'sum' => $sum,
+                'average' => $sum / $count,
+                'largest' => $largest,
+                'smallest' => $smallest,
+                'taxed' => $taxed,
+                'refunded' => $refunded,
+            ];
+        }
+    }
+
+  - tests/fixtures/strata/table_rows_a.php:25-38 (14 lines) [demoted: table] +0.93
+    tests/fixtures/strata/table_rows_b.php:20-31
+    → Demoted as table — this is the shape that stratum describes, so extract it only if the repetition is not the point.
+    · confidence +0.93 (lines +0.56, sites +0.17, literal +0.13)
+
+        ['code' => 'IT', 'prefix' => 39, 'name' => 'italy', 'active' => true],
+        ['code' => 'JP', 'prefix' => 81, 'name' => 'japan', 'active' => true],
+        ['code' => 'KR', 'prefix' => 82, 'name' => 'korea', 'active' => true],
+        ['code' => 'CN', 'prefix' => 86, 'name' => 'china', 'active' => false],
+        ['code' => 'DE', 'prefix' => 49, 'name' => 'germany', 'active' => true],
+        ['code' => 'FR', 'prefix' => 33, 'name' => 'france', 'active' => true],
+        ['code' => 'ES', 'prefix' => 34, 'name' => 'spain', 'active' => true],
+        ['code' => 'PT', 'prefix' => 351, 'name' => 'portugal', 'active' => false],
+        ['code' => 'NL', 'prefix' => 31, 'name' => 'holland', 'active' => true],
+        ['code' => 'BE', 'prefix' => 32, 'name' => 'belgium', 'active' => true],
+        ['code' => 'PL', 'prefix' => 48, 'name' => 'poland', 'active' => true],
+        ['code' => 'SE', 'prefix' => 46, 'name' => 'sweden', 'active' => false],
+        ['delta' => 'nine', 'epsilon' => 91],
+        ['delta' => 'ten', 'epsilon' => 92],
+
+  - tests/fixtures/strata/table_rows_a.php:25-27 (3 lines) [literals differ (12)] [demoted: table] -1.88
+    tests/fixtures/strata/table_rows_a.php:29-31
+    → Demoted as table — this is the shape that stratum describes, so extract it only if the repetition is not the point.
+    · confidence -1.88 (lines -2.31, sites +0.17, literal +0.13)
+
+        ['alpha' => 'two', 'beta' => 12, 'gamma' => 'blue'],
+        ['code' => 'IT', 'prefix' => 39, 'name' => 'italy', 'active' => true],
+        ['code' => 'JP', 'prefix' => 81, 'name' => 'japan', 'active' => true],
+        ['code' => 'KR', 'prefix' => 82, 'name' => 'korea', 'active' => true],
+        ['code' => 'CN', 'prefix' => 86, 'name' => 'china', 'active' => false],
+
+1 asserted, 2 demoted (table 2 · registration 0).
+29.35% of scanned lines (201) are duplicated code.
+Clone lines: average (26), largest (61).
+

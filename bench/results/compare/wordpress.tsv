@@ -1,8 +1,7 @@
 corpus	variant	clones	dup_lines	pct	gapped	time
-wordpress	original (phar)	177	9950	1.51%	-	3.24s
-wordpress	rk	177	9950	1.51%	0	3.91s
-wordpress	rk+fuzzy	847	52597	7.97%	0	4.16s
-wordpress	rk+anchored	821	51121	7.75%	0	4.39s
-wordpress	st (ed=3)	-	-	-	-	skipped
-wordpress	tb (sim=0.7)	263	14361	2.18%	0	31.89s
-wordpress	tb+fuzzy (sim=0.7)	962	75729	11.47%	0	12.4s
+wordpress	original (phar)	177	9950	1.51%	-	13.98s
+wordpress	rk	177	9875	1.50%	0	13.84s
+wordpress	rk+fuzzy	843	48312	7.36%	0	17.27s
+wordpress	rk+anchored	817	47086	7.17%	0	17.73s
+wordpress	tb (sim=0.7)	261	14727	2.24%	0	111.49s
+wordpress	tb+fuzzy (sim=0.7)	964	73328	11.17%	0	11.75s

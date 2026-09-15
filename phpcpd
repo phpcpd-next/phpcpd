@@ -1,44 +1,47 @@
 #!/usr/bin/env php
 <?php
+
+declare(strict_types=1);
 /*
- * This file is part of PHP Copy/Paste Detector (PHPCPD).
+ * This file is part of PhpcpdNext.
  *
- * (c) Sebastian Bergmann <sebastian@phpunit.de>
+ * (c) 2026 Luciano Federico Pereira
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
  */
 
-if (version_compare('8.5.0', PHP_VERSION, '>')) {
-    fwrite(
-        STDERR,
-        sprintf(
-            'This version of PHPCPD requires PHP 8.5 (or later).' . PHP_EOL .
-            'You are using PHP %s%s.' . PHP_EOL,
-            PHP_VERSION,
-            defined('PHP_BINARY') ? ' (' . PHP_BINARY . ')' : ''
-        )
-    );
+const PHPCPD_MINIMUM_PHP = '8.4.0';
 
-    die(1);
+/**
+ * Autoloader locations, nearest first: installed as a dependency (this
+ * file sits in vendor/bin of the consuming project), then a checkout of
+ * phpcpd-next itself.
+ */
+const PHPCPD_AUTOLOADERS = [
+    __DIR__ . '/../../autoload.php',
+    __DIR__ . '/vendor/autoload.php',
+];
+
+if (version_compare(PHP_VERSION, PHPCPD_MINIMUM_PHP, '<')) {
+    fwrite(STDERR, sprintf(
+        'phpcpd-next requires PHP %s or later; this is PHP %s (%s).' . PHP_EOL,
+        PHPCPD_MINIMUM_PHP,
+        PHP_VERSION,
+        PHP_BINARY,
+    ));
+
+    exit(1);
 }
 
-$loaded = false;
+foreach (PHPCPD_AUTOLOADERS as $autoloader) {
+    if (is_file($autoloader)) {
+        require $autoloader;
 
-foreach ([__DIR__ . '/../../autoload.php', __DIR__ . '/vendor/autoload.php'] as $file) {
-    if (file_exists($file)) {
-        require $file;
-        $loaded = true;
-        break;
+        exit((new LucianoPereira\PhpcpdNext\Application())->run($_SERVER['argv']));
     }
 }
 
-if (!$loaded) {
-    die(
-        'You need to set up the project dependencies using the following commands:' . PHP_EOL .
-        'wget http://getcomposer.org/composer.phar' . PHP_EOL .
-        'php composer.phar install' . PHP_EOL
-    );
-}
+fwrite(STDERR, 'Dependencies are not installed. Run:' . PHP_EOL . '    composer install' . PHP_EOL);
 
-exit((new \LucianoPereira\PhpcpdNext\Application)->run($_SERVER['argv']));
+exit(1);

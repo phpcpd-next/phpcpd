@@ -15,20 +15,18 @@ declare(strict_types=1);
  * run-compare.php — original phpcpd.phar vs PhpcpdNext, all corpora, all combos.
  *
  * Usage:
- *   php bench/run-compare.php                    # all corpora, fast algorithms only
+ *   php bench/run-compare.php                    # all corpora
  *   php bench/run-compare.php symfony-string     # one corpus
- *   php bench/run-compare.php --with-st          # also include suffixtree (slow on large corpora)
  *
- * Fast algorithms (rabin-karp, tokenbag) finish in seconds on any corpus.
- * Suffixtree is O(n·k) — takes minutes on >400 files and is opt-in via --with-st.
  * All variants use min-tokens=70 / min-lines=5 to match the phar's defaults.
+ * The suffix-tree lane was removed with the engine in 2.0.0; the published
+ * comparison results that included it are kept under bench/results/ unchanged.
  *
  * Results are written to bench/results/compare/<corpus>.tsv
  */
 
 require_once __DIR__ . '/lib.php';
 
-use LucianoPereira\PhpcpdNext\CodeCloneMap;
 
 // ---------------------------------------------------------------------------
 // Config
@@ -37,14 +35,16 @@ use LucianoPereira\PhpcpdNext\CodeCloneMap;
 const PHAR        = __DIR__ . '/vendor/phpcpd.phar';
 const CORPUS_ROOT = __DIR__ . '/corpus';
 const RESULTS_DIR = __DIR__ . '/results/compare';
-const ST_FILE_CAP = 400;   // warn when suffixtree is requested on large corpora
 
 // Shared detection options — same as phar defaults for a fair comparison.
+// Every variant names its own normalization, both halves of it. A variant
+// table that inherits any part of its configuration from a default is only a
+// table of variants for as long as that default stays put, and this one did
+// not: when normalization became the shipped default, `rk` and `rk+fuzzy`
+// became the same run and the matrix reported them as such without complaint.
 const BASE_OPTS = ['minTokens' => 70, 'minLines' => 5];
 
 $args = array_slice($argv, 1);
-$withSt = in_array('--with-st', $args, true);
-$args   = array_values(array_filter($args, fn(string $a) => $a !== '--with-st'));
 
 $allCorpora = array_map(
     fn(string $p) => basename($p),
@@ -59,12 +59,10 @@ $corpora = $args !== [] ? $args : $allCorpora;
 // ---------------------------------------------------------------------------
 
 // Each variant: [label, callable(files) -> [clones, dup_lines, pct, gapped, time_s]]
-// 'st' variants are tagged so we can skip them on large corpora.
 
 $variants = [
     [
         'label'   => 'original (phar)',
-        'st'      => false,
         'detect'  => static function (array $files, string $dir): array {
             if (!is_file(PHAR)) {
                 return ['error' => 'phar not found at ' . PHAR];
@@ -98,66 +96,29 @@ $variants = [
     ],
     [
         'label'  => 'rk',
-        'st'     => false,
-        'detect' => static fn(array $files, string $dir) => run_next($files, BASE_OPTS + ['algorithm' => 'rabin-karp']),
+        'detect' => static fn(array $files, string $dir) => run_next($files, BASE_OPTS + ['algorithm' => 'rabin-karp', 'fuzzy' => false, 'typeAnchored' => false]),
     ],
     [
         'label'  => 'rk+fuzzy',
-        'st'     => false,
-        'detect' => static fn(array $files, string $dir) => run_next($files, BASE_OPTS + ['algorithm' => 'rabin-karp', 'fuzzy' => true]),
+        'detect' => static fn(array $files, string $dir) => run_next($files, BASE_OPTS + ['algorithm' => 'rabin-karp', 'fuzzy' => true, 'typeAnchored' => false]),
     ],
     [
         'label'  => 'rk+anchored',
-        'st'     => false,
-        'detect' => static fn(array $files, string $dir) => run_next($files, BASE_OPTS + ['algorithm' => 'rabin-karp', 'typeAnchored' => true]),
-    ],
-    [
-        // Suffixtree is opt-in (--with-st): O(n·k) — minutes on large corpora.
-        // Runs via subprocess to avoid in-process stack issues with deep trees.
-        'label'  => 'st (ed=3)',
-        'st'     => true,
-        'skip'   => !in_array('--with-st', $GLOBALS['argv'], true),
-        'detect' => static fn(array $files, string $dir) => run_cli($dir, ['--algorithm', 'suffixtree', '--edit-distance', '3', '--min-tokens', '70', '--min-lines', '5']),
+        'detect' => static fn(array $files, string $dir) => run_next($files, BASE_OPTS + ['algorithm' => 'rabin-karp', 'fuzzy' => false, 'typeAnchored' => true]),
     ],
     [
         'label'  => 'tb (sim=0.7)',
-        'st'     => false,
-        'detect' => static fn(array $files, string $dir) => run_next($files, BASE_OPTS + ['algorithm' => 'tokenbag', 'similarity' => 0.7]),
+        'detect' => static fn(array $files, string $dir) => run_next($files, BASE_OPTS + ['algorithm' => 'tokenbag', 'similarity' => 0.7, 'fuzzy' => false, 'typeAnchored' => false]),
     ],
     [
         'label'  => 'tb+fuzzy (sim=0.7)',
-        'st'     => false,
-        'detect' => static fn(array $files, string $dir) => run_next($files, BASE_OPTS + ['algorithm' => 'tokenbag', 'similarity' => 0.7, 'fuzzy' => true]),
+        'detect' => static fn(array $files, string $dir) => run_next($files, BASE_OPTS + ['algorithm' => 'tokenbag', 'similarity' => 0.7, 'fuzzy' => true, 'typeAnchored' => false]),
     ],
 ];
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function run_cli(string $dir, array $extraArgs): array
-{
-    $binary = dirname(__DIR__) . '/phpcpd';
-    $t0     = microtime(true);
-    $cmd    = sprintf('php %s %s %s 2>&1',
-        escapeshellarg($binary),
-        implode(' ', array_map('escapeshellarg', $extraArgs)),
-        escapeshellarg($dir),
-    );
-    $out    = shell_exec($cmd) ?? '';
-    $t      = round(microtime(true) - $t0, 2);
-
-    $gapped = 0;
-    if (preg_match('/(\d+) inconsistent/', $out, $mg)) {
-        $gapped = (int) $mg[1];
-    }
-
-    if (preg_match('/Found (\d+) clones? with (\d+) duplicated lines? \(([\d.]+)%\)/', $out, $m)) {
-        return ['clones' => (int) $m[1], 'dup_lines' => (int) $m[2], 'pct' => $m[3] . '%', 'gapped' => $gapped, 'time' => $t . 's'];
-    }
-
-    return ['clones' => 0, 'dup_lines' => 0, 'pct' => '0.00%', 'gapped' => 0, 'time' => $t . 's'];
-}
 
 function run_next(array $files, array $opts): array
 {
@@ -233,16 +194,11 @@ foreach ($corpora as $corpus) {
 
     echo "\n=== $corpus ($fileCount files) ===\n\n";
 
-    if ($withSt && $fileCount > ST_FILE_CAP) {
-        fprintf(STDERR, "  [warn] suffixtree on %d files will be slow (>%d threshold)\n", $fileCount, ST_FILE_CAP);
-    }
     echo $header . $sep;
 
     $tsvRows = [];
 
     foreach ($variants as $v) {
-        $isSt = $v['st'];
-
         if (!empty($v['skip'])) {
             $r = ['clones' => '-', 'dup_lines' => '-', 'pct' => '-', 'gapped' => '-', 'time' => 'skipped'];
             printf("  %-22s  %s\n", $v['label'], 'skipped (corpus too large, use --no-st to suppress)');

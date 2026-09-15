@@ -1,0 +1,5 @@
+{
+    "name": "fixture/laravel-library",
+    "require": { "php": "^8.3" },
+    "require-dev": { "laravel/framework": "^11.0" }
+}

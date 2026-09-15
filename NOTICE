@@ -1,0 +1,26 @@
+phpcpd-next
+Copyright (c) 2025-2026 Luciano Federico Pereira and the phpcpd-next contributors
+
+Licensed under the MIT License. See LICENSE.
+
+## Origin
+
+phpcpd-next began as a fork of PHP Copy/Paste Detector (PHPCPD),
+Copyright (c) 2011-2023 Sebastian Bergmann, which was licensed under the
+BSD 3-Clause License.
+
+No file in `src/` carries that attribution any longer: every inherited file has
+been rewritten from its specification, each one proved to produce byte-identical
+output before its header was changed. `php bench/check-provenance.php` measures
+this and reports the inventory at zero. The relicensing above is that inventory
+reaching zero, not a decision taken in spite of it.
+
+No BSD 3-Clause text is shipped, because no code under it is. The closest
+thing to an exception is acknowledged rather than licensed: the membership of
+the ignored-token set in `src/Detector/Strategy/AbstractStrategy.php` — which
+nine of PHP's token types carry no program — came from the original, and is a
+fact about the language rather than a way of writing one. A licence file
+covering nothing would assert an encumbrance this package does not carry.
+
+That the tool exists at all is owed to the original. The idea, the problem, and
+fourteen years of it being worth solving are Sebastian Bergmann's.

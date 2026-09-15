@@ -1,0 +1,99 @@
+Usage:
+  phpcpd [options] <directory>
+
+Options for selecting files:
+
+  --suffix <suffix>            Include files with names ending in <suffix>
+                               (default: .php; repeatable)
+  --exclude <path>             Exclude files with <path> in their path
+                               (repeatable)
+  --preset <name>              Apply a framework preset (e.g. laravel): sets
+                               sensible paths, suffixes, and excludes
+  --triage                     Run Stage 0 corpus triage before detection (on by
+                               default; this asks for it explicitly)
+  --no-triage                  Skip Stage 0 entirely: no file is labelled
+                               unwired, shadowed, vendored or derived
+  --triage-posture <posture>   What triage does with a file it labels: discard
+                               it from the scan (default), or label it and
+                               nothing else
+  --no-preset                  Do not auto-apply a framework preset when one is
+                               detected (detection announces itself; --preset=
+                               overrides it)
+  --no-default-excludes        Scan generated and cache trees too (vendor,
+                               node_modules, .phpstan.cache, build, ...), which
+                               are skipped by default
+  --allow-root-scan            Permit a scan root of / or a root above the
+                               nearest composer.json (refused by default:
+                               `phpcpd /` is almost always a typo for `phpcpd
+                               ./`)
+
+Orphan detection (dead code):
+
+  --orphans                    Detect orphaned symbols (unreferenced classes,
+                               interfaces, traits, enums, functions) instead of
+                               clones
+  --no-suppress <rules>        Turn off suppression rules by name,
+                               comma-separated, or "all" (conditional, fixtures,
+                               config, template, manifest, namespace, keep,
+                               entrypoint, discovery, convention, planned)
+  --fail-on <tiers>            Result tiers that make the run exit non-zero,
+                               comma-separated (default: dead)
+  --explain                    List every suppressed symbol and the rule that
+                               suppressed it, instead of only counting them
+
+Options for analysing files:
+
+  --rk                         Rabin-Karp only (exact/Type-1 clones; faster, no
+                               reorder detection). Default runs both Rabin-Karp
+                               and TokenBag.
+  --min-lines <N>              Minimum number of identical lines (default: 5)
+  --min-tokens <N>             Minimum number of identical tokens (default: 100)
+
+General options:
+
+  --language <code>            Language for the report (default: en)
+
+Options for analysing files:
+
+  --verbose                    Print the duplicated code for each clone
+  --raw                        Match raw text: identifiers must agree too (turns
+                               off the default normalization)
+
+Options for report generation:
+
+  --min-confidence <log-odds>  List only findings the model scores at or above
+                               <log-odds>; the rest are counted and readable
+                               with --hidden, never dropped, and still gate
+                               --fail-on
+  --hidden                     List the findings --min-confidence held back
+  --acknowledged <file>        Read a committed acknowledgment ledger from
+                               <file>: listed duplication is demoted, never
+                               hidden, and entries whose code changed expire and
+                               are reported
+  --write-acknowledged <file>  Write this run's findings to <file> as an
+                               acknowledgment ledger, for review and commit
+  --log-pmd <file>             Write log in PMD-CPD XML format to <file>
+  --log-json <file>            Write log in JSON format to <file>
+  --log-sarif <file>           Write log in SARIF 2.1.0 format to <file> (for
+                               GitHub Code Scanning)
+
+Options for CI integration:
+
+  --cache                      Cache results in '.phpcpd-cache/' — a hit needs
+                               every file unchanged, so it serves a re-run of
+                               one commit rather than the next commit
+  --cache-dir <path>           Read/write cache from <path> (implies --cache;
+                               overrides default directory)
+  --incremental                Per-file incremental index: re-tokenize only
+                               changed files (rabin-karp or unified, not the
+                               combined default; uses the cache directory)
+
+General options:
+
+  --config <file>              Read settings from <file> (default: ./phpcpd.ini
+                               when present); keys are the long option names
+  --show-config                Print the settings in force, where each came
+                               from, and exit
+  --no-config                  Ignore ./phpcpd.ini
+  -h, --help                   Print this help
+  -v, --version                Print version information

@@ -44,11 +44,12 @@ final class DuplicationExampleTest extends TestCase
     #[Test]
     public function the_domain_layer_has_no_gapped_clones(): void
     {
-        // The suffixtree engine also surfaces near-miss (Type-3) clones, which is
-        // where a bug fixed in one copy but not its sibling tends to hide.
+        // The unified engine also surfaces near-miss (Type-3) clones, which is
+        // where a bug fixed in one copy but not its sibling tends to hide, and it
+        // names the divergent token ranges on both sides.
         $this->assertNoDuplication(
             __DIR__ . '/../../app/Domain',
-            algorithm: 'suffixtree',
+            algorithm: 'unified',
         );
     }
 }

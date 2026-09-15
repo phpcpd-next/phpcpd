@@ -13,6 +13,7 @@ declare(strict_types=1);
 namespace LucianoPereira\PhpcpdNext\Detector;
 
 use function count;
+use function array_keys;
 use function file_get_contents;
 use function is_string;
 use function ltrim;
@@ -76,6 +77,32 @@ final class CloneSuppressions
         return new self($ranges);
     }
 
+    /**
+     * Apply the markers found in a map's own files to that map.
+     *
+     * Suppression is a decision about what to *report*, so it belongs to
+     * whoever produces the finished map — not to the loop that finds clones.
+     * `Detector` used to do it, and the default pipeline runs two Detectors
+     * over the same files: every file carrying a clone was opened and scanned
+     * for markers twice, and the policy applied twice, to reach the answer one
+     * pass already had.
+     *
+     * Stated once here because three callers need it and each of them spelling
+     * it out is how the two of them that ran together came to do it twice.
+     */
+    public static function applyTo(CodeCloneMap $clones): CodeCloneMap
+    {
+        $files = [];
+
+        foreach ($clones->clones() as $clone) {
+            foreach ($clone->files() as $file) {
+                $files[$file->name] = true;
+            }
+        }
+
+        return self::forFiles(array_keys($files))->filter($clones);
+    }
+
     public function isEmpty(): bool
     {
         return $this->ranges === [];
@@ -89,10 +116,10 @@ final class CloneSuppressions
     public function suppresses(CodeClone $clone): bool
     {
         foreach ($clone->files() as $file) {
-            $first = $file->startLine();
-            $last  = $first + $clone->numberOfLines() - 1;
+            $first = $file->startLine;
+            $last  = $file->lastLine($clone->numberOfLines());
 
-            foreach ($this->ranges[$file->name()] ?? [] as [$from, $to]) {
+            foreach ($this->ranges[$file->name] ?? [] as [$from, $to]) {
                 if ($first <= $to && $last >= $from) {
                     return true;
                 }
@@ -121,6 +148,10 @@ final class CloneSuppressions
                 $filtered->add($clone);
             }
         }
+
+        // What earlier passes removed is a fact about the run, and a rebuilt
+        // map starts with fresh counters.
+        $filtered->carryRemovalsFrom($map);
 
         return $filtered;
     }

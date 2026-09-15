@@ -15,7 +15,6 @@ namespace LucianoPereira\PhpcpdNext\Orphan;
 use function count;
 use function implode;
 use function printf;
-use function sprintf;
 use function ucfirst;
 
 use const PHP_EOL;
@@ -38,8 +37,13 @@ use const PHP_EOL;
  *   - printAdvisory() definite orphans plus counts — used in the default
  *                     combined run, where orphans inform but do not fail.
  */
+use LucianoPereira\PhpcpdNext\Strings\Catalogue;
+
 final class OrphanTextReport
 {
+    /** Every sentence this report says; see {@see Catalogue}. */
+    public function __construct(private readonly Catalogue $strings = new Catalogue()) {}
+
     public function printResult(OrphanResult $result, ?OrphanConfiguration $config = null): void
     {
         $config   = $config ?? new OrphanConfiguration();
@@ -47,20 +51,19 @@ final class OrphanTextReport
         $possible = $result->possible();
 
         if ($result->isEmpty()) {
-            printf(
-                'No orphaned symbols found (%d symbols in %d files).' . PHP_EOL,
-                $result->symbolsScanned,
-                $result->filesScanned,
-            );
+            print $this->strings->get('report.orphan.none', [
+                'symbols' => $result->symbolsScanned,
+                'files'   => $result->filesScanned,
+            ]) . PHP_EOL;
         }
 
         if ($definite !== []) {
-            printf('Found %d orphaned symbol(s):' . PHP_EOL . PHP_EOL, count($definite));
+            print $this->strings->get('report.orphan.found', ['count' => count($definite)]) . PHP_EOL . PHP_EOL;
             $this->printGrouped($definite);
         }
 
         if ($possible !== []) {
-            printf('Found %d possible orphan(s) — review before removing:' . PHP_EOL . PHP_EOL, count($possible));
+            print $this->strings->get('report.orphan.possible', ['count' => count($possible)]) . PHP_EOL . PHP_EOL;
             $this->printGrouped($possible);
         }
 
@@ -80,17 +83,14 @@ final class OrphanTextReport
         $definite = $result->definite();
 
         if ($definite !== []) {
-            printf(
-                'Orphaned symbols (advisory — does not affect exit code): %d' . PHP_EOL . PHP_EOL,
-                count($definite),
-            );
+            print $this->strings->get('report.orphan.advisory', ['count' => count($definite)]) . PHP_EOL . PHP_EOL;
             $this->printGrouped($definite);
         }
 
         $rest = count($result->possible()) + count($result->planned());
 
         if ($rest > 0) {
-            printf('%d further orphan finding(s) not shown — run with --orphans to review them.' . PHP_EOL . PHP_EOL, $rest);
+            print $this->strings->get('report.orphan.notShown', ['count' => $rest]) . PHP_EOL . PHP_EOL;
         }
     }
 
@@ -125,11 +125,11 @@ final class OrphanTextReport
                 $census[] = $rule . ' ' . count($group);
             }
 
-            printf(
-                'Suppressed (%d): %s' . PHP_EOL . '  → --explain to list them' . PHP_EOL . PHP_EOL,
-                count($suppressed),
-                implode(' · ', $census),
-            );
+            print $this->strings->get('report.orphan.suppressed', [
+                'count'  => count($suppressed),
+                'census' => implode(' · ', $census),
+            ]) . PHP_EOL
+                . $this->strings->get('report.orphan.explainHint') . PHP_EOL . PHP_EOL;
 
             return;
         }
@@ -200,11 +200,11 @@ final class OrphanTextReport
             }
 
             if ($orphan->entireFileOrphaned) {
-                printf('    ⤷ whole file is unwired — no symbol declared here is referenced' . PHP_EOL);
+                print $this->strings->get('report.orphan.wholeFile') . PHP_EOL;
             }
 
             if ($orphan->duplicateOf !== null) {
-                printf('    ⤷ looks like a superseded copy of %s' . PHP_EOL, $orphan->duplicateOf);
+                print $this->strings->get('report.orphan.supersededBy', ['name' => $orphan->duplicateOf]) . PHP_EOL;
             }
 
             print PHP_EOL;
@@ -214,22 +214,31 @@ final class OrphanTextReport
     /**
      * One line is the whole verification for most entries; without it, every
      * demotion costs the reader a grep.
+     *
+     * The idiom rules need their own wording because their evidence is not a
+     * mention of the symbol — nothing mentions it, which is the point. It is the
+     * site that CONSTRUCTS the name, so the label has to say which construct was
+     * found rather than claim the symbol was named there.
      */
     private function evidenceLabel(Orphan $orphan): string
     {
-        return $orphan->rule === null ? 'name appears at' : 'named in';
+        return match ($orphan->rule) {
+            null             => $this->strings->get('explain.orphan.evidence.nameAt'),
+            Rule::DISCOVERY  => $this->strings->get('explain.orphan.evidence.loopAt'),
+            Rule::CONVENTION => $this->strings->get('explain.orphan.evidence.suffixAt'),
+            default          => $this->strings->get('explain.orphan.evidence.namedIn'),
+        };
     }
 
     private function summary(OrphanResult $result): string
     {
-        return sprintf(
-            '%d symbols scanned in %d files; %d orphaned, %d possible, %d suppressed, %d planned.',
-            $result->symbolsScanned,
-            $result->filesScanned,
-            count($result->definite()),
-            count($result->possible()),
-            count($result->suppressed()),
-            count($result->planned()),
-        );
+        return $this->strings->get('report.orphan.summary', [
+            'symbols'  => $result->symbolsScanned,
+            'files'    => $result->filesScanned,
+            'orphaned' => count($result->definite()),
+            'possible' => count($result->possible()),
+            'suppressed' => count($result->suppressed()),
+            'planned'    => count($result->planned()),
+        ]);
     }
 }

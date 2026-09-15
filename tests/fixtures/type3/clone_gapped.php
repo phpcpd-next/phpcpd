@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 // Type-3 fixture (gapped). Identical to clone_base.php except for the single
 // inserted statement marked below. This one inserted statement is the "gap"
-// that defeats Rabin-Karp exact windows but is bridged by the suffix tree's
-// edit-distance budget.
+// that defeats Rabin-Karp exact windows but is bridged by the unified engine's
+// banded alignment, which names the divergent range on both sides.
 
 function processLedger(array $entries): array
 {

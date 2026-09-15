@@ -1,0 +1,8 @@
+{
+    "name": "demo/shadowed",
+    "autoload": {
+        "psr-4": {
+            "Demo\\Shadow\\": ["src/", "lib/"]
+        }
+    }
+}

@@ -15,13 +15,14 @@ namespace LucianoPereira\PhpcpdNext;
 use function explode;
 use function implode;
 use function in_array;
-use function sprintf;
 use function trim;
 
 /**
  * One CLI option, declared once and used for parsing, validation, and help
  * generation — so the parser config and the --help text cannot drift apart.
  */
+use LucianoPereira\PhpcpdNext\Strings\Catalogue;
+
 final readonly class OptionDefinition
 {
     /**
@@ -36,6 +37,18 @@ final readonly class OptionDefinition
         public ?array $allowedValues = null,
         public string $valuePlaceholder = '',
         public string $description = '',
+        /**
+         * Values the description's own placeholders need.
+         *
+         * Almost every description is a fixed sentence. `--no-suppress` names
+         * the suppression rules a user can actually type, which the code knows
+         * and a translator does not, so it arrives as `:rules` rather than
+         * being spelled out in the language file where it would go stale the
+         * next time a rule is added.
+         *
+         * @var array<string, string|int>
+         */
+        public array $descriptionParameters = [],
         public string $group = '',
         public bool $advanced = false,
         public bool $listValue = false,
@@ -65,11 +78,10 @@ final readonly class OptionDefinition
 
     public function invalidValueMessage(string $candidate): string
     {
-        return sprintf(
-            'Invalid value "%s" for --%s (allowed: %s)',
-            $candidate,
-            $this->name,
-            implode(', ', $this->allowedValues ?? []),
-        );
+        return (new Catalogue())->get('refuse.invalidValue.option', [
+            'value'   => $candidate,
+            'flag'    => '--' . $this->name,
+            'allowed' => implode(', ', $this->allowedValues ?? []),
+        ]);
     }
 }

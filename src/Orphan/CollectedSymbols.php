@@ -24,6 +24,9 @@ namespace LucianoPereira\PhpcpdNext\Orphan;
  *                   reached dynamically (`new $class`, a DI service id, a config
  *                   array) — and the location, so a demotion can be verified at
  *                   a glance instead of costing the reader a grep.
+ *   - $idioms       the wiring that CONSTRUCTS class names instead of writing
+ *                   them, so no mention exists for $references to find. Harvested
+ *                   from the same token pass; see {@see IdiomIndex}.
  */
 final readonly class CollectedSymbols
 {
@@ -36,5 +39,6 @@ final readonly class CollectedSymbols
         public array $definitions,
         public array $references,
         public array $stringNames,
+        public IdiomIndex $idioms = new IdiomIndex(),
     ) {}
 }
