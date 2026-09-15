@@ -2,7 +2,7 @@
 
 Every release of phpcpd-next, as it ships. Each entry is one change, in the order the changes landed. The reasoning behind every entry, with the measurements it rests on, is kept in full in docs/release-notes.md.
 
-## Unreleased
+## v2.0.0 - 2026-09-15
 
 - Fixed the token bag being blind to every operator. It bagged only the tokens `token_get_all()` returns as arrays, so `;`, `(`, `=` and every arithmetic and comparison operator never reached it — about half the program text, and the half that says what the code does. `$x = $a + $b;` and `$x = $a - $b;` produced byte-identical bags. `DefaultStrategy` records fixing exactly this on its own side a release ago; the bag never got it, so the two arms of the shipped default disagreed about what a token is. Measured on the injected-clone study, the bag's recall over the guaranteed region goes from 82.8% to 94.8% against Rabin-Karp's 98.3%, closing the gap between the arms from 15.5 points to 3.5
 - Fixed the token count reported for a token-bag finding being the stopword-filtered overlap — the quantity the similarity decision is made on, fixed by document frequency across whatever else was scanned, and therefore not a property of the clone at all. The same two methods reported a different size depending on the rest of the run. It is printed as `tokens` by the PMD, SARIF and JSON writers; measured against the tokens the blocks actually span it ran to a median of 0.17 on php-parser, **0.04** on symfony-console and 0.34 on symfony/string — a 500-token body reported at twenty. It is now the unfiltered intersection, and each occurrence carries its own size
