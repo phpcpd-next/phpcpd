@@ -2,7 +2,6 @@
 #
 # Docs: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
 
-# ko_fi: yourhandle                         # Ko-fi
 # tidelift: packagist/phpcpd-next/phpcpd         # Tidelift (packagist/<vendor>/<package>)
 # custom:                                   # Any other URLs (PayPal, donate page)
 #   - "https://example.org/donate"
@@ -14,4 +13,5 @@
 #   - GitHub Sponsors / Tidelift — adoption-driven, once dependents grow
 
 github: lucianofedericopereira
+ko_fi: lucianofedericopereira
 open_collective: luciano-federico-pereira
